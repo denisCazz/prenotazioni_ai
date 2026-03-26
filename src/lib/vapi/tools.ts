@@ -7,7 +7,9 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
       function: {
         name: "check_availability",
         description:
-          "Controlla la disponibilità per una prenotazione in una data specifica oppure cerca i primi slot disponibili nei prossimi giorni futuri.",
+          "Controlla la disponibilità per una prenotazione in una data specifica oppure cerca i primi slot disponibili nei prossimi giorni futuri. OBBLIGATORIO: usa questo tool ogni volta che devi trovare o verificare disponibilità — non inventare mai date e orari.",
+        strict: true,
+        async: false,
         parameters: {
           type: "object",
           properties: {
@@ -33,7 +35,9 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
       function: {
         name: "create_booking",
         description:
-          "Crea una nuova prenotazione per un cliente. Usalo solo quando hai gia raccolto o confermato nome, telefono, data e orario.",
+          "Crea una nuova prenotazione per un cliente. Usalo SOLO dopo aver raccolto nome completo, telefono, data e orario dal cliente.",
+        strict: true,
+        async: false,
         parameters: {
           type: "object",
           properties: {
@@ -97,6 +101,8 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
         name: "cancel_booking",
         description:
           "Cancella una prenotazione esistente. Cerca per numero di telefono e data.",
+        strict: true,
+        async: false,
         parameters: {
           type: "object",
           properties: {
@@ -120,6 +126,8 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
         name: "lookup_booking",
         description:
           "Cerca le prenotazioni di un cliente tramite il numero di telefono.",
+        strict: true,
+        async: false,
         parameters: {
           type: "object",
           properties: {
@@ -139,6 +147,8 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
         name: "get_business_info",
         description:
           "Ottieni informazioni sull'attività: orari di apertura, servizi disponibili, indirizzo.",
+        strict: true,
+        async: false,
         parameters: {
           type: "object",
           properties: {},
@@ -160,7 +170,8 @@ REGOLE IMPORTANTI:
 - Ripeti sempre il numero di telefono e chiedi conferma.
 - Se un cognome, una marca o un modello non sono chiari, chiedi lo spelling.
 - Quando devi verificare l'agenda, usa frasi brevi come: "Un secondo che controllo subito in agenda" oppure "Sto verificando la disponibilità per ${businessName}".
-- Non inventare mai date, giorni o orari. Proponi solo disponibilità restituite dai tool.
+- Non inventare mai date, giorni o orari. Proponi SOLO disponibilità restituite dal tool check_availability.
+- Usa SEMPRE i tool quando devi controllare disponibilità o creare/cercare/cancellare prenotazioni. Non inventare mai.
 - Gli appuntamenti devono essere sempre successivi a oggi. Non proporre mai oggi o date passate.
 
 COSA PUOI FARE:

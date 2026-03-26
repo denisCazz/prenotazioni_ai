@@ -13,18 +13,20 @@ type VapiBody = {
   toolCall?: {
     id?: string;
     name?: string;
-    arguments?: Record<string, unknown>;
+    arguments?: Record<string, unknown> | string;
     function?: {
       name?: string;
+      arguments?: Record<string, unknown> | string;
       parameters?: Record<string, unknown>;
     };
   };
   toolCallList?: Array<{
     id?: string;
     name?: string;
-    arguments?: Record<string, unknown>;
+    arguments?: Record<string, unknown> | string;
     function?: {
       name?: string;
+      arguments?: Record<string, unknown> | string;
       parameters?: Record<string, unknown>;
     };
   }>;
@@ -64,9 +66,10 @@ type VapiBody = {
     toolCallList?: Array<{
       id?: string;
       name?: string;
-      arguments?: Record<string, unknown>;
+      arguments?: Record<string, unknown> | string;
       function?: {
         name?: string;
+        arguments?: Record<string, unknown> | string;
         parameters?: Record<string, unknown>;
       };
     }>;
@@ -104,6 +107,15 @@ function getBodyMessage(body: unknown) {
   return body && typeof body === "object" ? (body as VapiBody).message : undefined;
 }
 
+function parseArguments(value: unknown): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return undefined; }
+  }
+  return undefined;
+}
+
 export function getToolContext(body: unknown) {
   const root = body && typeof body === "object" ? (body as VapiBody) : undefined;
   const message = getBodyMessage(body);
@@ -111,9 +123,10 @@ export function getToolContext(body: unknown) {
   const toolCall = message?.toolCallList?.[0] || root?.toolCallList?.[0] || root?.toolCall;
   const functionCall = message?.functionCall || root?.functionCall;
   const topLevelParameters =
-    root?.toolCall?.function?.parameters ||
-    root?.toolCall?.arguments ||
-    root?.functionCall?.parameters;
+    parseArguments(root?.toolCall?.function?.parameters) ||
+    parseArguments(root?.toolCall?.function?.arguments) ||
+    parseArguments(root?.toolCall?.arguments) ||
+    parseArguments(root?.functionCall?.parameters);
   const rawBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 
   return {
@@ -131,11 +144,12 @@ export function getToolContext(body: unknown) {
       functionCall?.name ||
       (typeof rawBody.name === "string" ? rawBody.name : undefined),
     parameters:
-      toolWithToolCall?.function?.parameters ||
-      toolCall?.function?.parameters ||
-      toolCall?.arguments ||
-      functionCall?.parameters ||
-      topLevelParameters ||
+      parseArguments(toolWithToolCall?.function?.parameters) ||
+      parseArguments(toolCall?.function?.arguments) ||
+      parseArguments(toolCall?.function?.parameters) ||
+      parseArguments(toolCall?.arguments) ||
+      parseArguments(functionCall?.parameters) ||
+      parseArguments(topLevelParameters) ||
       (typeof rawBody.parameters === "object" && rawBody.parameters ? (rawBody.parameters as Record<string, unknown>) : undefined) ||
       (typeof rawBody.arguments === "object" && rawBody.arguments ? (rawBody.arguments as Record<string, unknown>) : undefined) ||
       rawBody,

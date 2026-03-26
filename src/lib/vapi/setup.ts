@@ -93,6 +93,8 @@ export async function updateVapiAssistant(
 
   if (config.firstMessage) {
     updates.firstMessage = config.firstMessage;
+  } else if (config.businessName) {
+    updates.firstMessage = `Grazie per aver chiamato ${config.businessName}. Sono Riley, la sua assistente virtuale per la gestione degli appuntamenti. Come posso aiutarla oggi?`;
   }
 
   return updateAssistant(assistantId, updates);

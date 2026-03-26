@@ -82,6 +82,8 @@ export interface VapiTool {
   function: {
     name: string;
     description: string;
+    strict?: boolean;
+    async?: boolean;
     parameters: {
       type: "object";
       properties: Record<string, unknown>;
