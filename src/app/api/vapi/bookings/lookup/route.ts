@@ -1,5 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Tables } from "@/lib/types/database";
 import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
+
+type BookingLookupResult = Tables<"bookings"> & {
+  services: { name: string } | null;
+};
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -31,9 +36,11 @@ export async function POST(request: Request) {
     return createToolResponse("Non ho trovato prenotazioni future per questo numero di telefono.", toolCallId);
   }
 
-  const bookingsText = data
+  const bookings = data as BookingLookupResult[];
+
+  const bookingsText = bookings
     .map((booking) => {
-      const serviceName = (booking as { services?: { name?: string } | null }).services?.name;
+      const serviceName = booking.services?.name;
       return `${booking.date} alle ${booking.start_time.slice(0, 5)}${serviceName ? ` (${serviceName})` : ""}`;
     })
     .join(", ");

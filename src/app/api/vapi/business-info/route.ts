@@ -2,6 +2,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
 import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 
+type BusinessInfoService = Pick<Tables<"services">, "name" | "duration_minutes">;
+type BusinessInfoAvailability = Pick<Tables<"availability_slots">, "day_of_week" | "start_time" | "end_time">;
+
 export async function POST(request: Request) {
   const body = await request.json();
   const toolCallId = getToolCallId(body);
@@ -30,10 +33,13 @@ export async function POST(request: Request) {
     supabase.from("availability_slots").select("*").eq("business_id", business.id).eq("is_active", true).order("day_of_week"),
   ]);
 
-  const servicesText = (servicesRes.data || [])
+  const services = (servicesRes.data || []) as BusinessInfoService[];
+  const availabilitySlots = (slotsRes.data || []) as BusinessInfoAvailability[];
+
+  const servicesText = services
     .map((service) => `${service.name} (${service.duration_minutes} min)`)
     .join(", ");
-  const availabilityText = (slotsRes.data || [])
+  const availabilityText = availabilitySlots
     .map((slot) => `${slot.day_of_week}: ${slot.start_time.slice(0, 5)}-${slot.end_time.slice(0, 5)}`)
     .join(", ");
 

@@ -1,5 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Tables } from "@/lib/types/database";
 import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
+import { NextResponse } from "next/server";
+
+type BookingCancellationResult = Pick<Tables<"bookings">, "id" | "customer_name" | "date" | "start_time">;
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
       return createToolResponse("Errore: business non trovato.", toolCallId, 404);
     }
 
-    const { data: booking } = await supabase
+    const { data: bookingData } = await supabase
       .from("bookings")
       .select("id, customer_name, date, start_time")
       .eq("business_id", businessId)
@@ -51,6 +55,8 @@ export async function POST(request: Request) {
       .order("start_time")
       .limit(1)
       .single();
+
+    const booking = bookingData as BookingCancellationResult | null;
 
     if (!booking) {
       return createToolResponse("Non ho trovato prenotazioni attive per questo numero e data.", toolCallId, 404);
@@ -96,7 +102,7 @@ export async function POST(request: Request) {
   const startTimeDb = start_time.length === 5 ? `${start_time}:00` : start_time;
   const endTimeDb = end_time ? (end_time.length === 5 ? `${end_time}:00` : end_time) : computedEndTime;
 
-  const { data, error } = await supabase
+  const { data: bookingData, error } = await supabase
     .from("bookings")
     .insert({
       business_id: businessId,
@@ -114,12 +120,18 @@ export async function POST(request: Request) {
     .select()
     .single();
 
+  const booking = bookingData as Tables<"bookings"> | null;
+
   if (error) {
     return createToolResponse(`Errore: ${error.message}`, toolCallId, 500);
   }
 
+  if (!booking) {
+    return createToolResponse("Errore: prenotazione non restituita dal database.", toolCallId, 500);
+  }
+
   return createToolResponse(
-    `Prenotazione confermata per ${data.customer_name} il ${data.date} alle ${data.start_time.slice(0, 5)}.`,
+    `Prenotazione confermata per ${booking.customer_name} il ${booking.date} alle ${booking.start_time.slice(0, 5)}.`,
     toolCallId,
     201
   );
