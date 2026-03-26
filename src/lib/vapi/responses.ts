@@ -28,6 +28,12 @@ type VapiBody = {
     call?: {
       id?: string;
       assistantId?: string;
+      assistant?: {
+        id?: string;
+      };
+    };
+    assistant?: {
+      id?: string;
     };
   };
 };
@@ -50,7 +56,10 @@ export function getToolContext(body: unknown) {
       toolCall?.arguments ||
       functionCall?.parameters ||
       (body && typeof body === "object" ? (body as Record<string, unknown>) : {}),
-    assistantId: message?.call?.assistantId,
+    assistantId:
+      message?.call?.assistantId ||
+      message?.call?.assistant?.id ||
+      message?.assistant?.id,
     callId: message?.call?.id,
   };
 }
