@@ -1,4 +1,5 @@
 import { format, parse, addMinutes, isBefore, isEqual } from "date-fns";
+import { it } from "date-fns/locale";
 import type { Tables } from "@/lib/types/database";
 
 interface TimeSlot {
@@ -120,4 +121,37 @@ export function isSlotAvailable(
 export function getWeekDayName(dayOfWeek: number): string {
   const days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
   return days[dayOfWeek] ?? "";
+}
+
+export function formatDateInRome(date: Date): string {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  return formatter.format(date);
+}
+
+export function getTodayDateInRome(): string {
+  return formatDateInRome(new Date());
+}
+
+export function isOnOrBeforeTodayInRome(dateStr: string): boolean {
+  return dateStr <= getTodayDateInRome();
+}
+
+export function getFutureDateCandidates(daysAhead: number = 7): string[] {
+  const dates = new Set<string>();
+
+  for (let dayOffset = 1; dayOffset <= daysAhead; dayOffset += 1) {
+    dates.add(formatDateInRome(new Date(Date.now() + dayOffset * 24 * 60 * 60 * 1000)));
+  }
+
+  return Array.from(dates);
+}
+
+export function formatDateForVoice(dateStr: string): string {
+  return format(new Date(`${dateStr}T00:00:00`), "EEEE d MMMM", { locale: it });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getDefaultSystemPrompt } from "@/lib/vapi/tools";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,26 +20,9 @@ interface Business {
   settings: Record<string, unknown> | null;
 }
 
-const defaultPrompt = `Sei l'assistente vocale di {nome_attivita}, un'attività di tipo "{tipo_attivita}".
-
-REGOLE IMPORTANTI:
-- Rispondi SEMPRE in italiano in modo cordiale e professionale.
-- Usa un tono amichevole ma non troppo informale.
-- Sii conciso nelle risposte vocali, evita frasi troppo lunghe.
-
-COSA PUOI FARE:
-- Aiutare i clienti a prenotare un appuntamento
-- Cancellare o modificare prenotazioni esistenti
-- Fornire informazioni su orari e servizi disponibili
-
-PROCEDURA PER PRENOTAZIONE:
-1. Chiedi quale servizio desidera il cliente
-2. Chiedi la data preferita
-3. Controlla la disponibilità
-4. Proponi gli slot disponibili
-5. Chiedi nome e numero di telefono
-6. Crea la prenotazione
-7. Conferma i dettagli`;
+interface BusinessUpdateResponse extends Business {
+  vapiSyncError?: string;
+}
 
 export default function AIAssistantPage() {
   const [business, setBusiness] = useState<Business | null>(null);
@@ -51,7 +35,7 @@ export default function AIAssistantPage() {
       .then((r) => r.json())
       .then((data) => {
         setBusiness(data);
-        setSystemPrompt(data.system_prompt || defaultPrompt);
+        setSystemPrompt(data.system_prompt || getDefaultSystemPrompt(data.name, data.type));
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -65,20 +49,31 @@ export default function AIAssistantPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ system_prompt: systemPrompt }),
       });
-      if (!res.ok) throw new Error();
-      toast.success("Prompt AI salvato");
-    } catch {
-      toast.error("Errore nel salvataggio");
+
+      const result = (await res.json().catch(() => null)) as BusinessUpdateResponse | { error?: string } | null;
+
+      if (!res.ok) {
+        throw new Error(
+          (result && "vapiSyncError" in result && result.vapiSyncError) ||
+            (result && "error" in result && result.error) ||
+            "Errore nel salvataggio"
+        );
+      }
+
+      if (result && "vapiSyncError" in result && result.vapiSyncError) {
+        toast.warning(`Prompt salvato, ma sync Vapi fallito: ${result.vapiSyncError}`);
+      } else {
+        toast.success("Prompt salvato e assistente Vapi aggiornato");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Errore nel salvataggio");
     }
     setSaving(false);
   }
 
   function resetToDefault() {
     if (!business) return;
-    const prompt = defaultPrompt
-      .replace("{nome_attivita}", business.name)
-      .replace("{tipo_attivita}", business.type);
-    setSystemPrompt(prompt);
+    setSystemPrompt(getDefaultSystemPrompt(business.name, business.type));
   }
 
   if (loading) {

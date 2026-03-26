@@ -29,7 +29,10 @@ export async function createAssistant(config: {
   model: {
     provider: string;
     model: string;
-    systemMessage: string;
+    messages: Array<{
+      role: "system";
+      content: string;
+    }>;
     tools: VapiTool[];
   };
   voice: {
@@ -54,6 +57,15 @@ export async function updateAssistant(assistantId: string, config: Record<string
 
 export async function getAssistant(assistantId: string) {
   return vapiRequest(`/assistant/${assistantId}`);
+}
+
+export interface VapiAssistantRecord {
+  id: string;
+  name?: string;
+}
+
+export async function listAssistants() {
+  return vapiRequest<VapiAssistantRecord[]>("/assistant");
 }
 
 export async function listCalls(assistantId?: string) {

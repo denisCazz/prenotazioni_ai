@@ -1,14 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
+import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 
 type BusinessInfoService = Pick<Tables<"services">, "name" | "duration_minutes">;
 type BusinessInfoAvailability = Pick<Tables<"availability_slots">, "day_of_week" | "start_time" | "end_time">;
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const toolCallId = getToolCallId(body);
-  const assistantId = body.message?.call?.assistantId;
+  const { toolCallId, assistantId } = getToolContext(body);
 
   if (!assistantId) {
     return createToolResponse("Errore: assistant ID mancante.", toolCallId, 400);

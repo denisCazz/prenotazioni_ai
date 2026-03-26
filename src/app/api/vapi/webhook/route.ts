@@ -1,5 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
+import {
+  formatDateForVoice,
+  getAvailableSlots,
+  getFutureDateCandidates,
+  getTodayDateInRome,
+  isOnOrBeforeTodayInRome,
+  isSlotAvailable,
+} from "@/lib/utils/availability";
 import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 
 type BookingWithServiceName = Tables<"bookings"> & {
@@ -44,7 +52,7 @@ export async function POST(request: Request) {
 
       switch (toolName) {
         case "check_availability": {
-          const { date, service_name } = toolParams;
+          const { date, service_name, days_ahead } = toolParams;
           let service: Tables<"services"> | null = null;
           if (service_name) {
             const { data } = await supabase
@@ -58,39 +66,80 @@ export async function POST(request: Request) {
             service = data as Tables<"services"> | null;
           }
 
-          const { data: slots } = await supabase
-            .from("availability_slots")
-            .select("*")
-            .eq("business_id", businessId);
+          const requestedDate = typeof date === "string" ? date : undefined;
+          const daysAhead = typeof days_ahead === "number" && days_ahead > 0 ? Math.min(days_ahead, 14) : 7;
 
-          const { data: exceptions } = await supabase
-            .from("availability_exceptions")
-            .select("*")
-            .eq("business_id", businessId)
-            .eq("date", date);
-
-          const { data: bookings } = await supabase
-            .from("bookings")
-            .select("start_time, end_time, status")
-            .eq("business_id", businessId)
-            .eq("date", date)
-            .neq("status", "cancelled");
-
-          const { getAvailableSlots } = await import("@/lib/utils/availability");
-          const available = getAvailableSlots(
-            date,
-            (slots ?? []) as Tables<"availability_slots">[],
-            (exceptions ?? []) as Tables<"availability_exceptions">[],
-            (bookings ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
-            service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
-          );
-
-          if (available.length === 0) {
-            return createToolResponse(`Non ci sono slot disponibili per il ${date}.`, functionCall.id);
+          if (requestedDate && isOnOrBeforeTodayInRome(requestedDate)) {
+            return createToolResponse(
+              "Posso proporre solo appuntamenti successivi a oggi. Se vuole, controllo subito le prime disponibilità da domani in poi.",
+              functionCall.id,
+              400
+            );
           }
 
-          const slotsText = available.map((s) => `${s.start_time}-${s.end_time}`).join(", ");
-          return createToolResponse(`Slot disponibili per il ${date}: ${slotsText}.`, functionCall.id);
+          const loadAvailability = async (targetDate: string) => {
+            const { data: slots } = await supabase
+              .from("availability_slots")
+              .select("*")
+              .eq("business_id", businessId);
+
+            const { data: exceptions } = await supabase
+              .from("availability_exceptions")
+              .select("*")
+              .eq("business_id", businessId)
+              .eq("date", targetDate);
+
+            const { data: bookings } = await supabase
+              .from("bookings")
+              .select("start_time, end_time, status")
+              .eq("business_id", businessId)
+              .eq("date", targetDate)
+              .neq("status", "cancelled");
+
+            return getAvailableSlots(
+              targetDate,
+              (slots ?? []) as Tables<"availability_slots">[],
+              (exceptions ?? []) as Tables<"availability_exceptions">[],
+              (bookings ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
+              service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
+            );
+          };
+
+          if (requestedDate) {
+            const available = await loadAvailability(requestedDate);
+
+            if (available.length === 0) {
+              return createToolResponse(`Non ci sono slot disponibili per ${formatDateForVoice(requestedDate)}.`, functionCall.id);
+            }
+
+            const slotsText = available
+              .slice(0, 4)
+              .map((slot) => `${formatDateForVoice(requestedDate)} alle ${slot.start_time}`)
+              .join(", ");
+            return createToolResponse(`Slot disponibili: ${slotsText}.`, functionCall.id);
+          }
+
+          const suggestions: string[] = [];
+
+          for (const futureDate of getFutureDateCandidates(daysAhead)) {
+            const available = await loadAvailability(futureDate);
+            for (const slot of available.slice(0, 2)) {
+              suggestions.push(`${formatDateForVoice(futureDate)} alle ${slot.start_time}`);
+              if (suggestions.length === 4) {
+                break;
+              }
+            }
+
+            if (suggestions.length === 4) {
+              break;
+            }
+          }
+
+          if (suggestions.length === 0) {
+            return createToolResponse("Non ho trovato disponibilità nei prossimi giorni successivi a oggi.", functionCall.id);
+          }
+
+          return createToolResponse(`Prime disponibilità trovate: ${suggestions.join(", ")}.`, functionCall.id);
         }
 
         case "create_booking": {
@@ -125,7 +174,10 @@ export async function POST(request: Request) {
             .eq("date", date)
             .neq("status", "cancelled");
 
-          const { isSlotAvailable } = await import("@/lib/utils/availability");
+          if (isOnOrBeforeTodayInRome(date)) {
+            return createToolResponse("Posso fissare solo appuntamenti in date successive a oggi.", functionCall.id, 400);
+          }
+
           if (
             !isSlotAvailable(
               startTimeDb,
@@ -230,7 +282,7 @@ export async function POST(request: Request) {
             .eq("business_id", businessId)
             .eq("customer_phone", phone)
             .eq("status", "confirmed")
-            .gte("date", new Date().toISOString().split("T")[0])
+            .gt("date", getTodayDateInRome())
             .order("date")
             .order("start_time");
 

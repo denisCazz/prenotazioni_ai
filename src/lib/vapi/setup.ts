@@ -29,7 +29,12 @@ export async function setupVapiAssistant(config: AssistantSetupConfig) {
     model: {
       provider: "openai",
       model: "gpt-4o",
-      systemMessage: systemPrompt,
+      messages: [
+        {
+          role: "system" as const,
+          content: systemPrompt,
+        },
+      ],
       tools,
     },
     voice: {
@@ -38,7 +43,7 @@ export async function setupVapiAssistant(config: AssistantSetupConfig) {
     },
     firstMessage:
       firstMessage ||
-      `Buongiorno! Benvenuto a ${businessName}. Come posso aiutarla oggi?`,
+      `Grazie per aver chiamato ${businessName}. Sono Riley, la sua assistente virtuale per la gestione degli appuntamenti. Come posso aiutarla oggi?`,
     serverUrl: `${serverBaseUrl}/api/vapi/webhook`,
   };
 
@@ -50,21 +55,36 @@ export async function updateVapiAssistant(
   config: Partial<AssistantSetupConfig>
 ) {
   const updates: Record<string, unknown> = {};
+  let modelUpdates: Record<string, unknown> | null = null;
 
   if (config.customSystemPrompt || (config.businessName && config.businessType)) {
-    updates.model = {
-      systemMessage:
-        config.customSystemPrompt ||
-        getDefaultSystemPrompt(config.businessName!, config.businessType!),
+    modelUpdates = {
+      ...(modelUpdates || {}),
+      provider: "openai",
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system" as const,
+          content:
+            config.customSystemPrompt ||
+            getDefaultSystemPrompt(config.businessName!, config.businessType!),
+        },
+      ],
     };
   }
 
   if (config.serverBaseUrl) {
-    updates.model = {
-      ...(updates.model as Record<string, unknown> || {}),
+    modelUpdates = {
+      ...(modelUpdates || {}),
+      provider: "openai",
+      model: "gpt-4o",
       tools: getVapiTools(config.serverBaseUrl),
     };
     updates.serverUrl = `${config.serverBaseUrl}/api/vapi/webhook`;
+  }
+
+  if (modelUpdates) {
+    updates.model = modelUpdates;
   }
 
   if (config.voiceId) {

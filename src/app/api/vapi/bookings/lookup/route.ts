@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
+import { getTodayDateInRome } from "@/lib/utils/availability";
+import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 
 type BookingLookupResult = Tables<"bookings"> & {
   services: { name: string } | null;
@@ -8,23 +9,23 @@ type BookingLookupResult = Tables<"bookings"> & {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const toolCallId = getToolCallId(body);
-  const params = body.message?.functionCall?.parameters || body;
+  const { toolCallId, parameters: params } = getToolContext(body);
   const { customer_phone } = params;
+  const customerPhone = typeof customer_phone === "string" ? customer_phone : undefined;
 
-  if (!customer_phone) {
+  if (!customerPhone) {
     return createToolResponse("Errore: telefono obbligatorio.", toolCallId, 400);
   }
 
   const supabase = createAdminClient();
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDateInRome();
 
   const { data, error } = await supabase
     .from("bookings")
     .select("*, services(name)")
-    .eq("customer_phone", customer_phone)
+    .eq("customer_phone", customerPhone)
     .eq("status", "confirmed")
-    .gte("date", today)
+    .gt("date", today)
     .order("date")
     .order("start_time");
 

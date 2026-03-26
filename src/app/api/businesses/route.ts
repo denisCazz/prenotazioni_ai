@@ -1,6 +1,60 @@
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Tables } from "@/lib/types/database";
+import { listAssistants } from "@/lib/vapi/client";
+import { setupVapiAssistant, updateVapiAssistant } from "@/lib/vapi/setup";
 import { NextResponse } from "next/server";
+
+function normalizeAssistantName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+async function resolveVapiAssistantId(
+  business: Tables<"businesses">,
+  serverBaseUrl: string,
+  supabase: ReturnType<typeof createAdminClient>
+) {
+  if (business.vapi_assistant_id) {
+    return business.vapi_assistant_id;
+  }
+
+  const assistantNames = new Set([
+    normalizeAssistantName(business.name),
+    normalizeAssistantName(`Assistente ${business.name}`),
+  ]);
+
+  const assistants = await listAssistants();
+  const matchingAssistant = assistants.find((assistant) => {
+    if (!assistant.name) return false;
+    return assistantNames.has(normalizeAssistantName(assistant.name));
+  });
+
+  const createdAssistant = matchingAssistant
+    ? null
+    : ((await setupVapiAssistant({
+        businessName: business.name,
+        businessType: business.type,
+        serverBaseUrl,
+        customSystemPrompt: business.system_prompt || undefined,
+      })) as { id?: string } | null);
+
+  const assistantId = matchingAssistant?.id || createdAssistant?.id;
+
+  if (!assistantId) {
+    throw new Error("Impossibile determinare l'assistant Vapi da collegare");
+  }
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({ vapi_assistant_id: assistantId })
+    .eq("id", business.id);
+
+  if (error) {
+    throw new Error(`Impossibile salvare l'assistant Vapi collegato: ${error.message}`);
+  }
+
+  return assistantId;
+}
 
 export async function GET() {
   const profile = await getProfile();
@@ -37,6 +91,41 @@ export async function PATCH(request: Request) {
     .select()
     .single();
 
+  const business = (data as Tables<"businesses"> | null) ?? null;
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+
+  const serverBaseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  let syncedBusiness = business;
+
+  if (business && serverBaseUrl) {
+    try {
+      const assistantId = await resolveVapiAssistantId(business, serverBaseUrl, supabase);
+
+      if (assistantId !== business.vapi_assistant_id) {
+        syncedBusiness = {
+          ...business,
+          vapi_assistant_id: assistantId,
+        };
+      }
+
+      await updateVapiAssistant(assistantId, {
+        businessName: business.name,
+        businessType: business.type,
+        serverBaseUrl,
+        customSystemPrompt: business.system_prompt || undefined,
+      });
+    } catch (syncError) {
+      const message = syncError instanceof Error ? syncError.message : "Errore sconosciuto durante il sync con Vapi";
+      return NextResponse.json(
+        {
+          ...syncedBusiness,
+          vapiSyncError: message,
+        },
+        { status: 502 }
+      );
+    }
+  }
+
+  return NextResponse.json(syncedBusiness);
 }

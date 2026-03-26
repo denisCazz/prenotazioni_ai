@@ -1,27 +1,30 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
-import { getAvailableSlots } from "@/lib/utils/availability";
+import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
+import {
+  formatDateForVoice,
+  getAvailableSlots,
+  getFutureDateCandidates,
+  isOnOrBeforeTodayInRome,
+} from "@/lib/utils/availability";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const toolCallId = getToolCallId(body);
-  const { message } = body;
-  const params = message?.functionCall?.parameters || body;
-  const { date, business_id } = params;
-
-  if (!date) {
-    return createToolResponse("Errore: data obbligatoria.", toolCallId, 400);
-  }
+  const { toolCallId, parameters: params, assistantId } = getToolContext(body);
+  const { date, business_id, service_name, days_ahead } = params;
+  const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
+  const requestedDate = typeof date === "string" ? date : undefined;
+  const requestedServiceName = typeof service_name === "string" ? service_name : undefined;
+  const daysAhead = typeof days_ahead === "number" && days_ahead > 0 ? Math.min(days_ahead, 14) : 7;
 
   const supabase = createAdminClient();
 
-  let businessId = business_id;
-  if (!businessId && message?.call?.assistantId) {
+  let businessId = businessIdFromParams;
+  if (!businessId && assistantId) {
     const { data: biz } = await supabase
       .from("businesses")
       .select("id")
-      .eq("vapi_assistant_id", message.call.assistantId)
+      .eq("vapi_assistant_id", assistantId)
       .single();
     businessId = biz?.id;
   }
@@ -30,23 +33,80 @@ export async function POST(request: Request) {
     return createToolResponse("Errore: business non trovato.", toolCallId, 404);
   }
 
-  const [slotsRes, exceptionsRes, bookingsRes] = await Promise.all([
-    supabase.from("availability_slots").select("*").eq("business_id", businessId),
-    supabase.from("availability_exceptions").select("*").eq("business_id", businessId).eq("date", date),
-    supabase.from("bookings").select("start_time, end_time, status").eq("business_id", businessId).eq("date", date).neq("status", "cancelled"),
-  ]);
+  const resolvedBusinessId = businessId;
 
-  const available = getAvailableSlots(
-    date,
-    (slotsRes.data ?? []) as Tables<"availability_slots">[],
-    (exceptionsRes.data ?? []) as Tables<"availability_exceptions">[],
-    (bookingsRes.data ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[]
-  );
-
-  if (available.length === 0) {
-    return createToolResponse(`Non ci sono slot disponibili per il ${date}.`, toolCallId);
+  let service: Tables<"services"> | null = null;
+  if (requestedServiceName && requestedServiceName.trim()) {
+    const { data } = await supabase
+      .from("services")
+      .select("*")
+      .eq("business_id", businessId)
+      .ilike("name", `%${requestedServiceName}%`)
+      .eq("active", true)
+      .limit(1)
+      .single();
+    service = (data as Tables<"services"> | null) ?? null;
   }
 
-  const slotsText = available.map((slot) => `${slot.start_time}-${slot.end_time}`).join(", ");
-  return createToolResponse(`Slot disponibili per il ${date}: ${slotsText}.`, toolCallId);
+  if (requestedDate && isOnOrBeforeTodayInRome(requestedDate)) {
+    return createToolResponse(
+      "Posso proporre solo appuntamenti successivi a oggi. Se vuole, controllo subito le prime disponibilità da domani in poi.",
+      toolCallId,
+      400
+    );
+  }
+
+  async function loadAvailability(targetDate: string) {
+    const [slotsRes, exceptionsRes, bookingsRes] = await Promise.all([
+      supabase.from("availability_slots").select("*").eq("business_id", resolvedBusinessId),
+      supabase.from("availability_exceptions").select("*").eq("business_id", resolvedBusinessId).eq("date", targetDate),
+      supabase.from("bookings").select("start_time, end_time, status").eq("business_id", resolvedBusinessId).eq("date", targetDate).neq("status", "cancelled"),
+    ]);
+
+    return getAvailableSlots(
+      targetDate,
+      (slotsRes.data ?? []) as Tables<"availability_slots">[],
+      (exceptionsRes.data ?? []) as Tables<"availability_exceptions">[],
+      (bookingsRes.data ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
+      service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
+    );
+  }
+
+  if (requestedDate) {
+    const available = await loadAvailability(requestedDate);
+
+    if (available.length === 0) {
+      return createToolResponse(`Non ci sono slot disponibili per ${formatDateForVoice(requestedDate)}.`, toolCallId);
+    }
+
+    const slotsText = available
+      .slice(0, 4)
+      .map((slot) => `${formatDateForVoice(requestedDate)} alle ${slot.start_time}`)
+      .join(", ");
+
+    return createToolResponse(`Slot disponibili: ${slotsText}.`, toolCallId);
+  }
+
+  const suggestions: string[] = [];
+
+  for (const futureDate of getFutureDateCandidates(daysAhead)) {
+    const available = await loadAvailability(futureDate);
+
+    for (const slot of available.slice(0, 2)) {
+      suggestions.push(`${formatDateForVoice(futureDate)} alle ${slot.start_time}`);
+      if (suggestions.length === 4) {
+        break;
+      }
+    }
+
+    if (suggestions.length === 4) {
+      break;
+    }
+  }
+
+  if (suggestions.length === 0) {
+    return createToolResponse("Non ho trovato disponibilità nei prossimi giorni successivi a oggi.", toolCallId);
+  }
+
+  return createToolResponse(`Prime disponibilità trovate: ${suggestions.join(", ")}.`, toolCallId);
 }

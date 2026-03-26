@@ -19,6 +19,10 @@ interface Business {
   system_prompt: string | null;
 }
 
+interface BusinessUpdateResponse extends Business {
+  vapiSyncError?: string;
+}
+
 export default function SettingsPage() {
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,10 +52,24 @@ export default function SettingsPage() {
           address: business.address,
         }),
       });
-      if (!res.ok) throw new Error();
-      toast.success("Impostazioni salvate");
-    } catch {
-      toast.error("Errore nel salvataggio");
+
+      const result = (await res.json().catch(() => null)) as BusinessUpdateResponse | { error?: string } | null;
+
+      if (!res.ok) {
+        throw new Error(
+          (result && "vapiSyncError" in result && result.vapiSyncError) ||
+            (result && "error" in result && result.error) ||
+            "Errore nel salvataggio"
+        );
+      }
+
+      if (result && "vapiSyncError" in result && result.vapiSyncError) {
+        toast.warning(`Impostazioni salvate, ma sync Vapi fallito: ${result.vapiSyncError}`);
+      } else {
+        toast.success("Impostazioni salvate e assistente Vapi aggiornato");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Errore nel salvataggio");
     }
     setSaving(false);
   }
