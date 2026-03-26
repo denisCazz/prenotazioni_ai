@@ -149,35 +149,37 @@ export async function POST(request: Request) {
     return `${formatDateForVoice(d)} alle ${t.slice(0, 5)}`;
   }
 
-  // Helper: collect up to `limit` slot suggestions from an ordered list of dates,
-  // skipping `skipDate`. Returns array of formatted strings and whether any were from zone.
-  async function collectSuggestions(
-    dates: string[],
-    limit: number,
-    skipDate?: string
-  ): Promise<{ suggestions: string[]; hasZone: boolean }> {
-    const suggestions: string[] = [];
-    let hasZone = false;
-    for (const d of dates) {
+  const futureDates = Array.from(getFutureDateCandidates(Math.max(daysAhead, 14)));
+
+  // PASS 1 — slots on dates that already have a booking within MAX_DISTANCE_KM (chronological within zone)
+  async function collectZoneSlots(limit: number, skipDate?: string): Promise<string[]> {
+    const results: string[] = [];
+    for (const d of futureDates) {
+      if (!zoneDates.has(d) || d === skipDate) continue;
+      const slots = await loadAvailability(d);
+      for (const slot of slots.slice(0, 2)) {
+        results.push(fmtSlot(d, slot.start_time));
+        if (results.length >= limit) break;
+      }
+      if (results.length >= limit) break;
+    }
+    return results;
+  }
+
+  // PASS 2 — earliest available slots regardless of zone (plain chronological)
+  async function collectAnySlots(limit: number, skipDate?: string): Promise<string[]> {
+    const results: string[] = [];
+    for (const d of futureDates) {
       if (d === skipDate) continue;
       const slots = await loadAvailability(d);
       for (const slot of slots.slice(0, 2)) {
-        if (zoneDates.has(d)) hasZone = true;
-        suggestions.push(fmtSlot(d, slot.start_time));
-        if (suggestions.length >= limit) break;
+        results.push(fmtSlot(d, slot.start_time));
+        if (results.length >= limit) break;
       }
-      if (suggestions.length >= limit) break;
+      if (results.length >= limit) break;
     }
-    return { suggestions, hasZone };
+    return results;
   }
-
-  const futureDates = Array.from(getFutureDateCandidates(Math.max(daysAhead, 14)));
-
-  // Zone dates first, then others — this is the core of the zone-preference logic
-  const orderedDates = [
-    ...futureDates.filter((d) => zoneDates.has(d)),
-    ...futureDates.filter((d) => !zoneDates.has(d)),
-  ];
 
   if (requestedDate) {
     const available = await loadAvailability(requestedDate);
@@ -196,36 +198,41 @@ export async function POST(request: Request) {
       return createToolResponse(msg, toolCallId);
     }
 
-    // No slots on requested date — find alternatives, preferring zone dates
-    const { suggestions, hasZone } = await collectSuggestions(orderedDates, 4, requestedDate);
-
-    if (suggestions.length === 0) {
+    // No slots on requested date — try zone first, then any
+    const zoneSlots = await collectZoneSlots(4, requestedDate);
+    if (zoneSlots.length > 0) {
       return createToolResponse(
-        "Non ho trovato disponibilità nei prossimi giorni.",
+        `Non ho disponibilità il ${formatDateForVoice(requestedDate)}, ma ho altri appuntamenti in zona in questi giorni: ${zoneSlots.join(", ")}.`,
         toolCallId
       );
     }
 
-    const fallbackIntro = hasZone
-      ? `Non ho disponibilità il ${formatDateForVoice(requestedDate)}, ma ho trovato slot in giorni con appuntamenti già in zona`
-      : `Non ho disponibilità il ${formatDateForVoice(requestedDate)}. Le prime alternative sono`;
-
-    return createToolResponse(`${fallbackIntro}: ${suggestions.join(", ")}.`, toolCallId);
+    const anySlots = await collectAnySlots(4, requestedDate);
+    if (anySlots.length === 0) {
+      return createToolResponse("Non ho trovato disponibilità nei prossimi giorni.", toolCallId);
+    }
+    return createToolResponse(
+      `Non ho disponibilità il ${formatDateForVoice(requestedDate)}. Il prima possibile: ${anySlots.join(", ")}.`,
+      toolCallId
+    );
   }
 
-  // No date requested — find next available slots, zone dates first
-  const { suggestions, hasZone } = await collectSuggestions(orderedDates, 4);
+  // No date requested — PASS 1: zone slots
+  const zoneSlots = await collectZoneSlots(4);
+  if (zoneSlots.length > 0) {
+    return createToolResponse(
+      `Ho disponibilità in giorni con appuntamenti già in zona: ${zoneSlots.join(", ")}.`,
+      toolCallId
+    );
+  }
 
-  if (suggestions.length === 0) {
+  // PASS 2: earliest slots
+  const anySlots = await collectAnySlots(4);
+  if (anySlots.length === 0) {
     return createToolResponse(
       "Non ho trovato disponibilità nei prossimi giorni successivi a oggi.",
       toolCallId
     );
   }
-
-  const intro = hasZone
-    ? "Ho trovato disponibilità in giorni con appuntamenti già in zona"
-    : "Prime disponibilità trovate";
-
-  return createToolResponse(`${intro}: ${suggestions.join(", ")}.`, toolCallId);
+  return createToolResponse(`Prime disponibilità: ${anySlots.join(", ")}.`, toolCallId);
 }
