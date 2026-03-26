@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { isOnOrBeforeTodayInRome } from "@/lib/utils/availability";
+import { isOnOrBeforeTodayInRome, normalizeFutureDate } from "@/lib/utils/availability";
 import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 import { NextResponse } from "next/server";
 
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
   const customerName = typeof customer_name === "string" ? customer_name : callerName;
   const customerPhone = typeof customer_phone === "string" ? customer_phone : callerPhone;
-  const bookingDate = typeof date === "string" ? date : undefined;
+  const bookingDate = typeof date === "string" ? normalizeFutureDate(date) : undefined;
   const startTime = typeof start_time === "string" ? start_time : undefined;
   const endTime = typeof end_time === "string" ? end_time : undefined;
   const serviceId = typeof service_id === "string" ? service_id : undefined;

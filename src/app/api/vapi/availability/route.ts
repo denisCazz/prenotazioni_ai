@@ -6,6 +6,7 @@ import {
   getAvailableSlots,
   getFutureDateCandidates,
   isOnOrBeforeTodayInRome,
+  normalizeFutureDate,
 } from "@/lib/utils/availability";
 
 export async function POST(request: Request) {
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
   const { toolCallId, parameters: params, assistantId } = getToolContext(body);
   const { date, business_id, service_name, days_ahead } = params;
   const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
-  const requestedDate = typeof date === "string" ? date : undefined;
+  const requestedDate = typeof date === "string" ? normalizeFutureDate(date) : undefined;
   const requestedServiceName = typeof service_name === "string" ? service_name : undefined;
   const daysAhead = typeof days_ahead === "number" && days_ahead > 0 ? Math.min(days_ahead, 14) : 7;
 

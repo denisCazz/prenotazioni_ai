@@ -142,6 +142,26 @@ export function isOnOrBeforeTodayInRome(dateStr: string): boolean {
   return dateStr <= getTodayDateInRome();
 }
 
+/**
+ * If the given date is in the past, advance it to the same day/month in the next year.
+ * This handles cases where the LLM omits the year and defaults to a past year.
+ */
+export function normalizeFutureDate(dateStr: string): string {
+  const today = getTodayDateInRome();
+  if (dateStr > today) return dateStr;
+  // Advance one year at a time until the date is in the future
+  const parts = dateStr.split("-");
+  let year = parseInt(parts[0], 10);
+  const monthDay = `${parts[1]}-${parts[2]}`;
+  const todayYear = parseInt(today.split("-")[0], 10);
+  year = todayYear;
+  let candidate = `${year}-${monthDay}`;
+  if (candidate <= today) {
+    candidate = `${year + 1}-${monthDay}`;
+  }
+  return candidate;
+}
+
 export function getFutureDateCandidates(daysAhead: number = 7): string[] {
   const dates = new Set<string>();
 

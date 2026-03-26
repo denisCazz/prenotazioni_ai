@@ -160,7 +160,17 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
 }
 
 export function getDefaultSystemPrompt(businessName: string, businessType: string): string {
+  const todayStr = new Intl.DateTimeFormat("it-IT", {
+    timeZone: "Europe/Rome",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+
   return `Sei Riley, l'assistente vocale di ${businessName}, un'attività di tipo "${businessType}" specializzata in assistenza stufe e gestione appuntamenti.
+
+La data di oggi è: ${todayStr}. Usa sempre questo anno come riferimento quando il cliente indica una data senza specificare l'anno.
 
 REGOLE IMPORTANTI:
 - Rispondi sempre in italiano in modo professionale, cordiale e naturale.
