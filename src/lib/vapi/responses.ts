@@ -5,6 +5,56 @@ function toSingleLine(value: string) {
 }
 
 type VapiBody = {
+  functionCall?: {
+    id?: string;
+    name?: string;
+    parameters?: Record<string, unknown>;
+  };
+  toolCall?: {
+    id?: string;
+    name?: string;
+    arguments?: Record<string, unknown>;
+    function?: {
+      name?: string;
+      parameters?: Record<string, unknown>;
+    };
+  };
+  toolCallList?: Array<{
+    id?: string;
+    name?: string;
+    arguments?: Record<string, unknown>;
+    function?: {
+      name?: string;
+      parameters?: Record<string, unknown>;
+    };
+  }>;
+  toolWithToolCallList?: Array<{
+    toolCall?: {
+      id?: string;
+      function?: {
+        name?: string;
+        parameters?: Record<string, unknown>;
+      };
+    };
+  }>;
+  call?: {
+    id?: string;
+    assistantId?: string;
+    assistant?: {
+      id?: string;
+    };
+    customer?: {
+      number?: string;
+      name?: string;
+    };
+  };
+  customer?: {
+    number?: string;
+    name?: string;
+  };
+  assistant?: {
+    id?: string;
+  };
   message?: {
     functionCall?: {
       id?: string;
@@ -15,6 +65,10 @@ type VapiBody = {
       id?: string;
       name?: string;
       arguments?: Record<string, unknown>;
+      function?: {
+        name?: string;
+        parameters?: Record<string, unknown>;
+      };
     }>;
     toolWithToolCallList?: Array<{
       toolCall?: {
@@ -39,6 +93,10 @@ type VapiBody = {
     assistant?: {
       id?: string;
     };
+    customer?: {
+      number?: string;
+      name?: string;
+    };
   };
 };
 
@@ -47,26 +105,58 @@ function getBodyMessage(body: unknown) {
 }
 
 export function getToolContext(body: unknown) {
+  const root = body && typeof body === "object" ? (body as VapiBody) : undefined;
   const message = getBodyMessage(body);
-  const toolWithToolCall = message?.toolWithToolCallList?.[0]?.toolCall;
-  const toolCall = message?.toolCallList?.[0];
-  const functionCall = message?.functionCall;
+  const toolWithToolCall = message?.toolWithToolCallList?.[0]?.toolCall || root?.toolWithToolCallList?.[0]?.toolCall;
+  const toolCall = message?.toolCallList?.[0] || root?.toolCallList?.[0] || root?.toolCall;
+  const functionCall = message?.functionCall || root?.functionCall;
+  const topLevelParameters =
+    root?.toolCall?.function?.parameters ||
+    root?.toolCall?.arguments ||
+    root?.functionCall?.parameters;
+  const rawBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 
   return {
-    toolCallId: toolWithToolCall?.id || toolCall?.id || functionCall?.id || message?.call?.id || "call_unknown",
-    toolName: toolWithToolCall?.function?.name || toolCall?.name || functionCall?.name,
+    toolCallId:
+      toolWithToolCall?.id ||
+      toolCall?.id ||
+      functionCall?.id ||
+      message?.call?.id ||
+      root?.call?.id ||
+      "call_unknown",
+    toolName:
+      toolWithToolCall?.function?.name ||
+      toolCall?.function?.name ||
+      toolCall?.name ||
+      functionCall?.name ||
+      (typeof rawBody.name === "string" ? rawBody.name : undefined),
     parameters:
       toolWithToolCall?.function?.parameters ||
+      toolCall?.function?.parameters ||
       toolCall?.arguments ||
       functionCall?.parameters ||
-      (body && typeof body === "object" ? (body as Record<string, unknown>) : {}),
+      topLevelParameters ||
+      (typeof rawBody.parameters === "object" && rawBody.parameters ? (rawBody.parameters as Record<string, unknown>) : undefined) ||
+      (typeof rawBody.arguments === "object" && rawBody.arguments ? (rawBody.arguments as Record<string, unknown>) : undefined) ||
+      rawBody,
     assistantId:
       message?.call?.assistantId ||
       message?.call?.assistant?.id ||
-      message?.assistant?.id,
-    callId: message?.call?.id,
-    callerPhone: message?.call?.customer?.number,
-    callerName: message?.call?.customer?.name,
+      message?.assistant?.id ||
+      root?.call?.assistantId ||
+      root?.call?.assistant?.id ||
+      root?.assistant?.id,
+    callId: message?.call?.id || root?.call?.id,
+    callerPhone:
+      message?.customer?.number ||
+      message?.call?.customer?.number ||
+      root?.customer?.number ||
+      root?.call?.customer?.number,
+    callerName:
+      message?.customer?.name ||
+      message?.call?.customer?.name ||
+      root?.customer?.name ||
+      root?.call?.customer?.name,
   };
 }
 
