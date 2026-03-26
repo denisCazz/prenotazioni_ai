@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       return createToolResponse("Errore: impossibile cancellare la prenotazione in questo momento.", toolCallId, 500);
     }
 
-    void sendTelegramMessage(
+    await sendTelegramMessage(
       `❌ <b>Appuntamento cancellato</b>\n` +
       `👤 ${booking.customer_name}\n` +
       `📅 ${booking.date} alle ${booking.start_time.slice(0, 5)}`
@@ -238,7 +238,7 @@ export async function POST(request: Request) {
     return createToolResponse("Errore: prenotazione non restituita dal database.", toolCallId, 500);
   }
 
-  void sendTelegramMessage(
+  await sendTelegramMessage(
     `📅 <b>Nuova prenotazione</b>\n` +
     `👤 ${booking.customer_name}\n` +
     `📞 ${booking.customer_phone}\n` +
