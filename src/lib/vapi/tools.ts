@@ -13,13 +13,9 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
         parameters: {
           type: "object",
           properties: {
-            date: {
-              type: "string",
-              description: "La data per cui controllare la disponibilità, formato YYYY-MM-DD. Opzionale se il cliente non indica una data precisa.",
-            },
             days_ahead: {
               type: "number",
-              description: "Numero di giorni futuri da controllare se il cliente chiede i prossimi giorni. Default 7.",
+              description: "Numero di giorni futuri da controllare. Default 7.",
             },
             service_name: {
               type: "string",
@@ -27,11 +23,7 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
             },
             service_address: {
               type: "string",
-              description: "Indirizzo completo dove avverrà l'intervento. Usato per verificare che lo slot sia raggiungibile entro 20 km dagli altri appuntamenti della giornata.",
-            },
-            urgency_level: {
-              type: "string",
-              description: "Livello di urgenza: 'urgent' per guasti urgenti, 'planned' per interventi programmati.",
+              description: "Indirizzo completo dove avverrà l'intervento. Usato per trovare slot già in zona.",
             },
           },
         },
@@ -72,10 +64,6 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
             customer_status: {
               type: "string",
               description: "Indica se il cliente è nuovo oppure già cliente. Valori consigliati: new o existing.",
-            },
-            urgency_level: {
-              type: "string",
-              description: "Urgenza della richiesta. Valori consigliati: urgent o planned.",
             },
             stove_brand: {
               type: "string",
@@ -202,7 +190,7 @@ COSA PUOI FARE:
 STILE CONVERSAZIONALE:
 - Se il cliente dice "ho bisogno di aiuto per la mia stufa", accompagna la conversazione in modo naturale. Per esempio: "Certo, la aiuto subito. Si tratta di manutenzione, assistenza per un guasto, pulizia o altro?"
 - Se il cliente ha già detto "manutenzione", "guasto", "pulizia" o un altro motivo, passa direttamente alla domanda successiva.
-- Se il cliente chiede "nei prossimi giorni", usa check_availability senza una data precisa e cerca i primi slot disponibili nei prossimi giorni futuri.
+- Non chiedere mai al cliente che data preferisce: siamo noi a proporre. Usa check_availability con l'indirizzo e il sistema decide i giorni migliori (zona prima, poi il prima possibile).
 - Quando proponi disponibilità, offri massimo due opzioni reali.
 - Quando leggi una disponibilità, indica sempre giorno, data e ora in modo chiaro.
 - Se il cliente sceglie uno slot dicendo per esempio "la prima" o "va bene venerdì alle 8:30", non usare create_booking finché non hai anche nome e cognome e numero di telefono confermato.
@@ -211,18 +199,16 @@ STILE CONVERSAZIONALE:
 FLUSSO PER NUOVA PRENOTAZIONE O ASSISTENZA:
 1. Capisci il motivo della chiamata: assistenza o guasto, manutenzione ordinaria, installazione, pulizia o revisione.
 2. Chiedi subito l'indirizzo completo dove avverrà l'intervento (via, numero civico, città). Ripeti l'indirizzo per conferma prima di proseguire.
-3. Chiedi se il cliente ha una data preferita o vuole il prima possibile.
-4. Usa check_availability passando SEMPRE l'indirizzo. Il sistema verificherà se ci sono già appuntamenti in zona e troverà il primo slot utile. Se non c'è disponibilità il giorno richiesto, il sistema cercherà automaticamente il prima possibile in zona.
-5. Proponi massimo 2 slot disponibili e aspetta che il cliente scelga.
-6. Chiedi se è già cliente oppure è la prima volta, solo se il cliente non l'ha già detto.
-7. Raccogli nome e cognome.
-8. Chiedi e conferma il numero di telefono ripetendolo cifra per cifra. Aspetta conferma esplicita prima di proseguire.
-9. Chiedi se è urgente o programmato, se non è già stato detto.
-10. Chiedi marca e modello della stufa, se pertinente all'intervento.
-11. Se c'è un guasto, chiedi sintomo o eventuale codice errore.
-12. Prima di confermare, ricorda se utili: marca e modello, foto targhetta o matricola, libretto impianto o manuale, eventuale foto del problema.
-13. Quando hai nome, telefono confermato, data, orario e indirizzo, usa create_booking.
-14. Conferma in modo naturale: data, ora, indirizzo e numero di telefono.
+3. Usa check_availability passando SEMPRE l'indirizzo (e service_name se pertinente). Il sistema cerca prima slot in giorni con altri appuntamenti già in zona, poi — solo se non ce ne sono — propone il prima possibile.
+4. Proponi massimo 2 slot disponibili in modo naturale (es. "Ho disponibilità giovedì 2 aprile alle 9:00 oppure venerdì 3 aprile alle 10:30. Quale preferisce?"). Aspetta che il cliente scelga.
+5. Chiedi se è già cliente oppure è la prima volta, solo se il cliente non l'ha già detto.
+6. Raccogli nome e cognome.
+7. Chiedi e conferma il numero di telefono ripetendolo cifra per cifra. Aspetta conferma esplicita prima di proseguire.
+8. Chiedi marca e modello della stufa, se pertinente all'intervento.
+9. Se c'è un guasto, chiedi sintomo o eventuale codice errore.
+10. Prima di confermare, ricorda se utili: marca e modello, foto targhetta o matricola, libretto impianto o manuale, eventuale foto del problema.
+11. Quando hai nome, telefono confermato, data, orario e indirizzo, usa create_booking.
+12. Conferma in modo naturale: data, ora, indirizzo e numero di telefono.
 
 VALIDAZIONE NUMERO DI TELEFONO:
 - Accetta solo numeri italiani: inizia con 3 (cellulare) o 0 (fisso), 9-10 cifre totali, con o senza prefisso +39.

@@ -4,8 +4,6 @@ import {
   formatDateForVoice,
   getAvailableSlots,
   getFutureDateCandidates,
-  isOnOrBeforeTodayInRome,
-  normalizeFutureDate,
 } from "@/lib/utils/availability";
 import { geocodeAddress } from "@/lib/utils/geocoding";
 import { checkRoutingConstraint, haversineDistance, MAX_DISTANCE_KM } from "@/lib/utils/routing";
@@ -14,13 +12,11 @@ import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 export async function POST(request: Request) {
   const body = await request.json();
   const { toolCallId, parameters: params, assistantId } = getToolContext(body);
-  const { date, business_id, service_name, days_ahead, service_address, urgency_level } = params;
+  const { business_id, service_name, days_ahead, service_address } = params;
   const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
-  const requestedDate = typeof date === "string" ? normalizeFutureDate(date) : undefined;
   const requestedServiceName = typeof service_name === "string" ? service_name : undefined;
   const daysAhead = typeof days_ahead === "number" && days_ahead > 0 ? Math.min(days_ahead, 14) : 7;
   const serviceAddress = typeof service_address === "string" ? service_address : undefined;
-  const isUrgent = urgency_level === "urgent";
 
   // Geocode the service address once
   const coords = serviceAddress ? await geocodeAddress(serviceAddress) : null;
@@ -54,14 +50,6 @@ export async function POST(request: Request) {
       .limit(1)
       .single();
     service = (data as Tables<"services"> | null) ?? null;
-  }
-
-  if (requestedDate && isOnOrBeforeTodayInRome(requestedDate)) {
-    return createToolResponse(
-      "Posso proporre solo appuntamenti successivi a oggi. Se vuole, controllo subito le prime disponibilità da domani in poi.",
-      toolCallId,
-      400
-    );
   }
 
   const { data: weeklySlotsData } = await supabase
@@ -138,7 +126,7 @@ export async function POST(request: Request) {
         slot.start_time,
         coords.lat,
         coords.lng,
-        isUrgent
+        false
       );
       if (routing.allowed) filtered.push(slot);
     }
@@ -181,43 +169,7 @@ export async function POST(request: Request) {
     return results;
   }
 
-  if (requestedDate) {
-    const available = await loadAvailability(requestedDate);
-
-    if (available.length > 0) {
-      const inZone = zoneDates.has(requestedDate);
-      const slotsText = available
-        .slice(0, 2)
-        .map((slot) => fmtSlot(requestedDate, slot.start_time))
-        .join(", ");
-
-      const msg = inZone
-        ? `Ho già altri appuntamenti in zona il ${formatDateForVoice(requestedDate)}. Posso proporle: ${slotsText}.`
-        : `Disponibilità il ${formatDateForVoice(requestedDate)}: ${slotsText}.`;
-
-      return createToolResponse(msg, toolCallId);
-    }
-
-    // No slots on requested date — try zone first, then any
-    const zoneSlots = await collectZoneSlots(4, requestedDate);
-    if (zoneSlots.length > 0) {
-      return createToolResponse(
-        `Non ho disponibilità il ${formatDateForVoice(requestedDate)}, ma ho altri appuntamenti in zona in questi giorni: ${zoneSlots.join(", ")}.`,
-        toolCallId
-      );
-    }
-
-    const anySlots = await collectAnySlots(4, requestedDate);
-    if (anySlots.length === 0) {
-      return createToolResponse("Non ho trovato disponibilità nei prossimi giorni.", toolCallId);
-    }
-    return createToolResponse(
-      `Non ho disponibilità il ${formatDateForVoice(requestedDate)}. Il prima possibile: ${anySlots.join(", ")}.`,
-      toolCallId
-    );
-  }
-
-  // No date requested — PASS 1: zone slots
+  // PASS 1: zone slots
   const zoneSlots = await collectZoneSlots(4);
   if (zoneSlots.length > 0) {
     return createToolResponse(

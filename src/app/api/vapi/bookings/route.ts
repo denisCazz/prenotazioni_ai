@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const bookingSource = typeof source === "string" ? source : "manual";
   const callId = typeof call_id === "string" ? call_id : undefined;
   const serviceAddress = typeof service_address === "string" ? service_address : undefined;
-  const urgencyLevel = typeof urgency_level === "string" ? urgency_level : undefined;
+  const urgencyLevel = "urgent"; // sempre urgente, non lo chiediamo al cliente
   const stoveBrand = typeof stove_brand === "string" ? stove_brand : undefined;
   const stoveModel = typeof stove_model === "string" ? stove_model : undefined;
   const issueDescription = typeof issue_description === "string" ? issue_description : undefined;
@@ -170,14 +170,13 @@ export async function POST(request: Request) {
 
   // Routing constraint check (only when we have coordinates)
   if (coords) {
-    const isUrgent = urgencyLevel === "urgent";
     const routing = await checkRoutingConstraint(
       resolvedBusinessId,
       resolvedBookingDate,
       resolvedStartTime,
       coords.lat,
       coords.lng,
-      isUrgent
+      false
     );
 
     if (!routing.allowed) {
