@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
 
-const MAX_DISTANCE_KM = 20;
+export const MAX_DISTANCE_KM = 20;
 /** Travel buffer between consecutive appointments (minutes) */
 const TRAVEL_BUFFER_MINUTES = 20;
 

@@ -26,6 +26,7 @@ export async function setupVapiAssistant(config: AssistantSetupConfig) {
 
   const assistantConfig = {
     name: `Assistente ${businessName}`,
+    endCallFunctionEnabled: true,
     model: {
       provider: "openai",
       model: "gpt-4o",

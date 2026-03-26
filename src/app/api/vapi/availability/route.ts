@@ -8,7 +8,7 @@ import {
   normalizeFutureDate,
 } from "@/lib/utils/availability";
 import { geocodeAddress } from "@/lib/utils/geocoding";
-import { checkRoutingConstraint } from "@/lib/utils/routing";
+import { checkRoutingConstraint, haversineDistance, MAX_DISTANCE_KM } from "@/lib/utils/routing";
 import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 
 export async function POST(request: Request) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const serviceAddress = typeof service_address === "string" ? service_address : undefined;
   const isUrgent = urgency_level === "urgent";
 
-  // Geocode the service address once (used for routing checks below)
+  // Geocode the service address once
   const coords = serviceAddress ? await geocodeAddress(serviceAddress) : null;
 
   const supabase = createAdminClient();
@@ -78,7 +78,40 @@ export async function POST(request: Request) {
     );
   }
 
-  async function loadAvailability(targetDate: string) {
+  // ── Pre-fetch all future bookings with coordinates in ONE query ──────────
+  // Used to (a) identify "zone dates" efficiently and (b) feed routing checks.
+  const today = new Date().toISOString().split("T")[0];
+  const { data: geoBookingsData } = await supabase
+    .from("bookings")
+    .select("date, start_time, end_time, latitude, longitude, status")
+    .eq("business_id", resolvedBusinessId)
+    .in("status", ["confirmed", "completed"])
+    .not("latitude", "is", null)
+    .not("longitude", "is", null)
+    .gte("date", today);
+
+  type GeoBooking = { date: string; start_time: string; end_time: string; latitude: number; longitude: number; status: string };
+  const geoBookings = (geoBookingsData ?? []) as GeoBooking[];
+
+  // Dates that already have at least one booking within MAX_DISTANCE_KM of the customer
+  const zoneDates = new Set<string>();
+  if (coords) {
+    for (const b of geoBookings) {
+      if (haversineDistance(b.latitude, b.longitude, coords.lat, coords.lng) <= MAX_DISTANCE_KM) {
+        zoneDates.add(b.date);
+      }
+    }
+  }
+
+  // Build a per-date map for routing checks (avoids repeated DB queries per slot)
+  const bookingsByDate = new Map<string, GeoBooking[]>();
+  for (const b of geoBookings) {
+    const list = bookingsByDate.get(b.date) ?? [];
+    list.push(b);
+    bookingsByDate.set(b.date, list);
+  }
+
+  async function loadAvailability(targetDate: string): Promise<{ start_time: string }[]> {
     const [exceptionsRes, bookingsRes] = await Promise.all([
       supabase.from("availability_exceptions").select("*").eq("business_id", resolvedBusinessId).eq("date", targetDate),
       supabase.from("bookings").select("start_time, end_time, status").eq("business_id", resolvedBusinessId).eq("date", targetDate).neq("status", "cancelled"),
@@ -92,8 +125,10 @@ export async function POST(request: Request) {
       service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
     );
 
-    // Apply routing filter if we have geocoordinates
+    // Apply routing filter only if we have coords AND bookings with geo on that day
     if (!coords) return allSlots;
+    const dayBookings = bookingsByDate.get(targetDate);
+    if (!dayBookings || dayBookings.length === 0) return allSlots;
 
     const filtered: typeof allSlots = [];
     for (const slot of allSlots) {
@@ -110,41 +145,87 @@ export async function POST(request: Request) {
     return filtered;
   }
 
+  function fmtSlot(d: string, t: string) {
+    return `${formatDateForVoice(d)} alle ${t.slice(0, 5)}`;
+  }
+
+  // Helper: collect up to `limit` slot suggestions from an ordered list of dates,
+  // skipping `skipDate`. Returns array of formatted strings and whether any were from zone.
+  async function collectSuggestions(
+    dates: string[],
+    limit: number,
+    skipDate?: string
+  ): Promise<{ suggestions: string[]; hasZone: boolean }> {
+    const suggestions: string[] = [];
+    let hasZone = false;
+    for (const d of dates) {
+      if (d === skipDate) continue;
+      const slots = await loadAvailability(d);
+      for (const slot of slots.slice(0, 2)) {
+        if (zoneDates.has(d)) hasZone = true;
+        suggestions.push(fmtSlot(d, slot.start_time));
+        if (suggestions.length >= limit) break;
+      }
+      if (suggestions.length >= limit) break;
+    }
+    return { suggestions, hasZone };
+  }
+
+  const futureDates = Array.from(getFutureDateCandidates(Math.max(daysAhead, 14)));
+
+  // Zone dates first, then others — this is the core of the zone-preference logic
+  const orderedDates = [
+    ...futureDates.filter((d) => zoneDates.has(d)),
+    ...futureDates.filter((d) => !zoneDates.has(d)),
+  ];
+
   if (requestedDate) {
     const available = await loadAvailability(requestedDate);
 
-    if (available.length === 0) {
-      return createToolResponse(`Non ci sono slot disponibili per ${formatDateForVoice(requestedDate)}.`, toolCallId);
+    if (available.length > 0) {
+      const inZone = zoneDates.has(requestedDate);
+      const slotsText = available
+        .slice(0, 2)
+        .map((slot) => fmtSlot(requestedDate, slot.start_time))
+        .join(", ");
+
+      const msg = inZone
+        ? `Ho già altri appuntamenti in zona il ${formatDateForVoice(requestedDate)}. Posso proporle: ${slotsText}.`
+        : `Disponibilità il ${formatDateForVoice(requestedDate)}: ${slotsText}.`;
+
+      return createToolResponse(msg, toolCallId);
     }
 
-    const slotsText = available
-      .slice(0, 4)
-      .map((slot) => `${formatDateForVoice(requestedDate)} alle ${slot.start_time}`)
-      .join(", ");
+    // No slots on requested date — find alternatives, preferring zone dates
+    const { suggestions, hasZone } = await collectSuggestions(orderedDates, 4, requestedDate);
 
-    return createToolResponse(`Slot disponibili: ${slotsText}.`, toolCallId);
+    if (suggestions.length === 0) {
+      return createToolResponse(
+        "Non ho trovato disponibilità nei prossimi giorni.",
+        toolCallId
+      );
+    }
+
+    const fallbackIntro = hasZone
+      ? `Non ho disponibilità il ${formatDateForVoice(requestedDate)}, ma ho trovato slot in giorni con appuntamenti già in zona`
+      : `Non ho disponibilità il ${formatDateForVoice(requestedDate)}. Le prime alternative sono`;
+
+    return createToolResponse(`${fallbackIntro}: ${suggestions.join(", ")}.`, toolCallId);
   }
 
-  const suggestions: string[] = [];
-
-  for (const futureDate of getFutureDateCandidates(daysAhead)) {
-    const available = await loadAvailability(futureDate);
-
-    for (const slot of available.slice(0, 2)) {
-      suggestions.push(`${formatDateForVoice(futureDate)} alle ${slot.start_time}`);
-      if (suggestions.length === 4) {
-        break;
-      }
-    }
-
-    if (suggestions.length === 4) {
-      break;
-    }
-  }
+  // No date requested — find next available slots, zone dates first
+  const { suggestions, hasZone } = await collectSuggestions(orderedDates, 4);
 
   if (suggestions.length === 0) {
-    return createToolResponse("Non ho trovato disponibilità nei prossimi giorni successivi a oggi.", toolCallId);
+    return createToolResponse(
+      "Non ho trovato disponibilità nei prossimi giorni successivi a oggi.",
+      toolCallId
+    );
   }
 
-  return createToolResponse(`Prime disponibilità trovate: ${suggestions.join(", ")}.`, toolCallId);
+  const intro = hasZone
+    ? "Ho trovato disponibilità in giorni con appuntamenti già in zona"
+    : "Prime disponibilità trovate";
+
+  return createToolResponse(`${intro}: ${suggestions.join(", ")}.`, toolCallId);
 }
