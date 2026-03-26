@@ -1,18 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile) return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
+
+  const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from("services")
@@ -25,20 +21,14 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id, role")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile || profile.role !== "owner") {
     return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
   }
 
+  const supabase = createAdminClient();
   const body = await request.json();
   const { data, error } = await supabase
     .from("services")
@@ -51,17 +41,18 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   const body = await request.json();
   const { id, ...updates } = body;
 
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("services")
     .update(updates)
     .eq("id", id)
+    .eq("business_id", profile.business_id)
     .select()
     .single();
 
@@ -74,8 +65,15 @@ export async function DELETE(request: Request) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "ID obbligatorio" }, { status: 400 });
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("services").delete().eq("id", id);
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("services")
+    .delete()
+    .eq("id", id)
+    .eq("business_id", profile.business_id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

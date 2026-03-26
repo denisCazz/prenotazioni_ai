@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,7 @@ export default async function CallDetailPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: rawCall } = await supabase
     .from("call_logs")

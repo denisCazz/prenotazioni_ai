@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Prenotazioni Tel",
-  description: "Sistema di prenotazioni telefoniche con AI",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://bitora-booking.vercel.app"),
+  title: "Bitora Booking",
+  description: "Sistema di prenotazioni telefoniche con AI per attivita locali",
 };
 
 export default function RootLayout({

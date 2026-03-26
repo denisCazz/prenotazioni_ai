@@ -1,9 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { NextResponse } from "next/server";
+import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const supabase = createAdminClient();
+  const toolCallId = getToolCallId(body);
+
+  const toolName = body.message?.functionCall?.name;
 
   const params = body.message?.functionCall?.parameters || body;
   const {
@@ -19,8 +22,57 @@ export async function POST(request: Request) {
     call_id,
   } = params;
 
+  if (toolName === "cancel_booking") {
+    if (!customer_phone || !date) {
+      return createToolResponse("Errore: numero di telefono e data sono obbligatori per cancellare una prenotazione.", toolCallId, 400);
+    }
+
+    let businessId = business_id;
+    if (!businessId && body.message?.call?.assistantId) {
+      const { data: biz } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("vapi_assistant_id", body.message.call.assistantId)
+        .single();
+      businessId = biz?.id;
+    }
+
+    if (!businessId) {
+      return createToolResponse("Errore: business non trovato.", toolCallId, 404);
+    }
+
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("id, customer_name, date, start_time")
+      .eq("business_id", businessId)
+      .eq("customer_phone", customer_phone)
+      .eq("date", date)
+      .eq("status", "confirmed")
+      .order("start_time")
+      .limit(1)
+      .single();
+
+    if (!booking) {
+      return createToolResponse("Non ho trovato prenotazioni attive per questo numero e data.", toolCallId, 404);
+    }
+
+    const { error: cancelError } = await supabase
+      .from("bookings")
+      .update({ status: "cancelled" })
+      .eq("id", booking.id);
+
+    if (cancelError) {
+      return createToolResponse("Errore: impossibile cancellare la prenotazione in questo momento.", toolCallId, 500);
+    }
+
+    return createToolResponse(
+      `Prenotazione cancellata per ${booking.customer_name} il ${booking.date} alle ${booking.start_time.slice(0, 5)}.`,
+      toolCallId
+    );
+  }
+
   if (!customer_name || !customer_phone || !date || !start_time) {
-    return NextResponse.json({ error: "Campi obbligatori mancanti" }, { status: 400 });
+    return createToolResponse("Errore: campi obbligatori mancanti per creare la prenotazione.", toolCallId, 400);
   }
 
   let businessId = business_id;
@@ -34,7 +86,7 @@ export async function POST(request: Request) {
   }
 
   if (!businessId) {
-    return NextResponse.json({ error: "Business non trovato" }, { status: 404 });
+    return createToolResponse("Errore: business non trovato.", toolCallId, 404);
   }
 
   const duration = 30;
@@ -63,10 +115,14 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return createToolResponse(`Errore: ${error.message}`, toolCallId, 500);
   }
 
-  return NextResponse.json(data, { status: 201 });
+  return createToolResponse(
+    `Prenotazione confermata per ${data.customer_name} il ${data.date} alle ${data.start_time.slice(0, 5)}.`,
+    toolCallId,
+    201
+  );
 }
 
 export async function DELETE(request: Request) {

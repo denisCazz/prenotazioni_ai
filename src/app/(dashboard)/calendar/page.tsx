@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import { CalendarView } from "@/components/dashboard/calendar-view";
 
 export default async function CalendarPage() {
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: services } = await supabase
     .from("services")

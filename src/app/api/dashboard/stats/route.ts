@@ -1,18 +1,14 @@
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile) return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
+
+  const supabase = createAdminClient();
 
   const today = new Date().toISOString().split("T")[0];
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];

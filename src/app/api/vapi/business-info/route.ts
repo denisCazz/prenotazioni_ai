@@ -1,13 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { NextResponse } from "next/server";
+import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 
 export async function POST(request: Request) {
   const body = await request.json();
+  const toolCallId = getToolCallId(body);
   const assistantId = body.message?.call?.assistantId;
 
   if (!assistantId) {
-    return NextResponse.json({ error: "Assistant ID mancante" }, { status: 400 });
+    return createToolResponse("Errore: assistant ID mancante.", toolCallId, 400);
   }
 
   const supabase = createAdminClient();
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   const business = businessRaw as Tables<"businesses"> | null;
 
   if (!business) {
-    return NextResponse.json({ error: "Business non trovato" }, { status: 404 });
+    return createToolResponse("Errore: business non trovato.", toolCallId, 404);
   }
 
   const [servicesRes, slotsRes] = await Promise.all([
@@ -29,13 +30,15 @@ export async function POST(request: Request) {
     supabase.from("availability_slots").select("*").eq("business_id", business.id).eq("is_active", true).order("day_of_week"),
   ]);
 
-  return NextResponse.json({
-    business: {
-      name: business.name,
-      type: business.type,
-      address: business.address,
-    },
-    services: servicesRes.data || [],
-    availability: slotsRes.data || [],
-  });
+  const servicesText = (servicesRes.data || [])
+    .map((service) => `${service.name} (${service.duration_minutes} min)`)
+    .join(", ");
+  const availabilityText = (slotsRes.data || [])
+    .map((slot) => `${slot.day_of_week}: ${slot.start_time.slice(0, 5)}-${slot.end_time.slice(0, 5)}`)
+    .join(", ");
+
+  return createToolResponse(
+    `${business.name} - ${business.type}. Indirizzo: ${business.address || "Non specificato"}. Servizi: ${servicesText || "Non configurati"}. Disponibilita: ${availabilityText || "Non configurata"}.`,
+    toolCallId
+  );
 }

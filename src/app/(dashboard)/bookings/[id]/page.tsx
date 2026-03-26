@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import type { Tables } from "@/lib/types/database";
 import { notFound } from "next/navigation";
@@ -21,7 +21,7 @@ export default async function BookingDetailPage({
 }) {
   const { id } = await params;
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data } = await supabase
     .from("bookings")

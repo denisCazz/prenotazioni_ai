@@ -1,16 +1,17 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
+import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 import { getAvailableSlots } from "@/lib/utils/availability";
-import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   const body = await request.json();
+  const toolCallId = getToolCallId(body);
   const { message } = body;
   const params = message?.functionCall?.parameters || body;
   const { date, business_id } = params;
 
   if (!date) {
-    return NextResponse.json({ error: "Data obbligatoria" }, { status: 400 });
+    return createToolResponse("Errore: data obbligatoria.", toolCallId, 400);
   }
 
   const supabase = createAdminClient();
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   if (!businessId) {
-    return NextResponse.json({ error: "Business non trovato" }, { status: 404 });
+    return createToolResponse("Errore: business non trovato.", toolCallId, 404);
   }
 
   const [slotsRes, exceptionsRes, bookingsRes] = await Promise.all([
@@ -42,5 +43,10 @@ export async function POST(request: Request) {
     (bookingsRes.data ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[]
   );
 
-  return NextResponse.json({ slots: available, date });
+  if (available.length === 0) {
+    return createToolResponse(`Non ci sono slot disponibili per il ${date}.`, toolCallId);
+  }
+
+  const slotsText = available.map((slot) => `${slot.start_time}-${slot.end_time}`).join(", ");
+  return createToolResponse(`Slot disponibili per il ${date}: ${slotsText}.`, toolCallId);
 }

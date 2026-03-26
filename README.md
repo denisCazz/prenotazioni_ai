@@ -1,11 +1,11 @@
-# Prenotazioni Tel
+# Bitora Booking
 
 Sistema di prenotazioni telefoniche con assistente vocale AI. I clienti chiamano un numero di telefono dedicato e un assistente AI in italiano gestisce prenotazioni, cancellazioni e richieste di informazioni. I gestori dell'attivita hanno una dashboard web completa per monitorare tutto.
 
 ## Stack tecnologico
 
 - **Next.js 15** (App Router, TypeScript, Turbopack)
-- **Supabase** (PostgreSQL, Auth, Row Level Security, Realtime)
+- **Supabase** (PostgreSQL, Realtime)
 - **Vapi.ai** (Voice AI: Deepgram STT, GPT-4o, ElevenLabs TTS)
 - **Tailwind CSS v4** + **shadcn/ui**
 - **date-fns** per la gestione delle date
@@ -41,7 +41,8 @@ Compila `.env.local` con le tue credenziali:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Dashboard > Settings > API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard > Settings > API (attenzione: non esporre mai lato client) |
 | `VAPI_API_KEY` | Vapi Dashboard > Organization > API Keys |
-| `NEXT_PUBLIC_APP_URL` | URL della tua app (es. `http://localhost:3000` in dev) |
+| `NEXT_PUBLIC_APP_URL` | URL pubblica della tua app (in questo progetto `https://bitora-booking.vercel.app`) |
+| `AUTH_SECRET` | Una stringa lunga e casuale usata per firmare le sessioni custom |
 
 ### 3. Configura il database Supabase
 
@@ -49,9 +50,10 @@ Vai su Supabase Dashboard > SQL Editor ed esegui il contenuto di:
 
 ```
 supabase/migrations/001_initial_schema.sql
+supabase/migrations/002_custom_dashboard_auth.sql
 ```
 
-Questo crea tutte le tabelle, indici, policy RLS e il trigger per la creazione automatica dei profili.
+Questo crea tutte le tabelle, indici e abilita il login custom via username e password salvati nel database.
 
 ### 4. Crea il primo utente e business
 
@@ -62,10 +64,27 @@ In Supabase Dashboard > SQL Editor:
 INSERT INTO public.businesses (name, type, address)
 VALUES ('La Mia Attivita', 'ristorante', 'Via Roma 1, Milano');
 
--- Poi registra un utente dalla pagina /login di Supabase Auth
--- oppure crea manualmente in Authentication > Users
--- Il trigger handle_new_user creera il profilo automaticamente
--- Assicurati di passare business_id nei metadata dell'utente
+-- Recupera l'id del business creato
+SELECT id, name FROM public.businesses;
+```
+
+Genera poi l'hash della password:
+
+```bash
+npm run hash-password -- "PasswordSicura123!"
+```
+
+Infine crea l'utente dashboard nel database:
+
+```sql
+INSERT INTO public.profiles (business_id, full_name, username, password_hash, role)
+VALUES (
+  '<business_id>',
+  'Mario Rossi',
+  'admin',
+  '<hash_generato>',
+  'owner'
+);
 ```
 
 ### 5. Configura Vapi.ai
@@ -81,13 +100,15 @@ VALUES ('La Mia Attivita', 'ristorante', 'Via Roma 1, Milano');
    - `get_business_info` -> `POST https://tuo-dominio.com/api/vapi/business-info`
 5. Copia l'Assistant ID e aggiornalo nella tabella `businesses`
 
+Guida completa, campo per campo, in `docs/vapi-tools-setup.md`.
+
 ### 6. Avvia il server di sviluppo
 
 ```bash
 npm run dev
 ```
 
-Apri [http://localhost:3000](http://localhost:3000) per accedere alla dashboard.
+Apri [https://bitora-booking.vercel.app](https://bitora-booking.vercel.app) o il tuo ambiente locale per accedere alla dashboard.
 
 ## Struttura del progetto
 
@@ -106,7 +127,7 @@ src/
         ai-assistant/       # Configurazione assistente AI
     api/
       vapi/                 # Endpoint per Vapi (webhook, tools)
-      auth/                 # Callback autenticazione
+      auth/                 # Login/logout dashboard
       bookings/             # CRUD prenotazioni (dashboard)
       businesses/           # Configurazione attivita
       services/             # CRUD servizi
@@ -114,7 +135,7 @@ src/
       call-logs/            # Storico chiamate
       dashboard/stats/      # Statistiche
   lib/
-    supabase/               # Client Supabase (browser, server, admin)
+    supabase/               # Client Supabase server/admin
     vapi/                   # Client Vapi, tools, setup
     utils/                  # Logica disponibilita
     types/                  # Tipi TypeScript database

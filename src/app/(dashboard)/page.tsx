@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/auth";
 import type { Tables } from "@/lib/types/database";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +13,13 @@ type BookingWithService = Tables<"bookings"> & {
 
 export default async function DashboardPage() {
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
-  const today = new Date().toISOString().split("T")[0];
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split("T")[0];
+  const todayDate = new Date();
+  const today = todayDate.toISOString().split("T")[0];
+  const weekAgoDate = new Date(todayDate);
+  weekAgoDate.setDate(weekAgoDate.getDate() - 7);
+  const weekAgo = weekAgoDate.toISOString().split("T")[0];
 
   const [todayRes, weekRes, callsRes, upcomingRes] = await Promise.all([
     supabase

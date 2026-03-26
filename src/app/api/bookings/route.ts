@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -12,17 +13,12 @@ export async function GET(request: Request) {
   const search = searchParams.get("search");
   const offset = (page - 1) * limit;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile) return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
+
+  const supabase = createAdminClient();
 
   let query = supabase
     .from("bookings")
@@ -45,18 +41,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile) return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
 
+  const supabase = createAdminClient();
   const body = await request.json();
   const startTime = body.start_time?.length === 5 ? `${body.start_time}:00` : body.start_time;
   const endTime = body.end_time?.length === 5 ? `${body.end_time}:00` : body.end_time;
@@ -78,19 +68,20 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   const body = await request.json();
   const { id, ...updates } = body;
 
   if (!id) return NextResponse.json({ error: "ID obbligatorio" }, { status: 400 });
 
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("bookings")
     .update(updates)
     .eq("id", id)
+    .eq("business_id", profile.business_id)
     .select()
     .single();
 

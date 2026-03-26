@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { NextResponse } from "next/server";
+import { createToolResponse, getToolCallId } from "@/lib/vapi/responses";
 
 type BookingWithServiceName = Tables<"bookings"> & {
   services: { name: string } | null;
@@ -9,11 +9,12 @@ type BookingWithServiceName = Tables<"bookings"> & {
 export async function POST(request: Request) {
   const body = await request.json();
   const supabase = createAdminClient();
+  const toolCallId = getToolCallId(body);
 
   const { message } = body;
 
   if (!message) {
-    return NextResponse.json({ error: "No message" }, { status: 400 });
+    return createToolResponse("Errore: messaggio mancante.", toolCallId, 400);
   }
 
   const messageType = message.type;
@@ -36,9 +37,7 @@ export async function POST(request: Request) {
         .single();
 
       if (!business) {
-        return NextResponse.json({
-          results: [{ toolCallId: functionCall.id, result: "Errore: attività non trovata." }],
-        });
+        return createToolResponse("Errore: attività non trovata.", functionCall.id, 404);
       }
 
       const businessId = business.id;
@@ -87,15 +86,11 @@ export async function POST(request: Request) {
           );
 
           if (available.length === 0) {
-            return NextResponse.json({
-              results: [{ toolCallId: functionCall.id, result: `Non ci sono slot disponibili per il ${date}.` }],
-            });
+            return createToolResponse(`Non ci sono slot disponibili per il ${date}.`, functionCall.id);
           }
 
           const slotsText = available.map((s) => `${s.start_time}-${s.end_time}`).join(", ");
-          return NextResponse.json({
-            results: [{ toolCallId: functionCall.id, result: `Slot disponibili per il ${date}: ${slotsText}` }],
-          });
+          return createToolResponse(`Slot disponibili per il ${date}: ${slotsText}.`, functionCall.id);
         }
 
         case "create_booking": {
@@ -139,12 +134,10 @@ export async function POST(request: Request) {
               serviceData?.max_concurrent ?? 1
             )
           ) {
-            return NextResponse.json({
-              results: [{ toolCallId: functionCall.id, result: "Mi dispiace, questo slot non è più disponibile. Vuole provare un altro orario?" }],
-            });
+            return createToolResponse("Mi dispiace, questo slot non è più disponibile. Vuole provare un altro orario?", functionCall.id);
           }
 
-          const { error } = await supabase.from("bookings").insert({
+          const { data: booking, error } = await supabase.from("bookings").insert({
             business_id: businessId,
             service_id: serviceData?.id || null,
             customer_name,
@@ -156,20 +149,30 @@ export async function POST(request: Request) {
             source: "phone_ai",
             call_id: message.call?.id || null,
             notes: notes || null,
-          });
+          }).select("id, customer_name, date, start_time").single();
 
           if (error) {
-            return NextResponse.json({
-              results: [{ toolCallId: functionCall.id, result: "Si è verificato un errore nella creazione della prenotazione. Riprovi più tardi." }],
-            });
+            return createToolResponse("Si è verificato un errore nella creazione della prenotazione. Riprovi più tardi.", functionCall.id, 500);
           }
 
-          return NextResponse.json({
-            results: [{
-              toolCallId: functionCall.id,
-              result: `Prenotazione confermata! ${customer_name}, il ${date} alle ${start_time}${serviceData ? ` per ${serviceData.name}` : ""}. Durata: ${duration} minuti.`,
-            }],
-          });
+          await supabase
+            .from("call_logs")
+            .upsert(
+              {
+                business_id: businessId,
+                vapi_call_id: message.call?.id || functionCall.id,
+                booking_id: booking?.id || null,
+                caller_phone: phone || null,
+                started_at: message.call?.startedAt || new Date().toISOString(),
+                outcome: "booking_created",
+              },
+              { onConflict: "vapi_call_id" }
+            );
+
+          return createToolResponse(
+            `Prenotazione confermata per ${customer_name} il ${date} alle ${start_time}${serviceData ? ` per ${serviceData.name}` : ""}. Durata ${duration} minuti.`,
+            functionCall.id
+          );
         }
 
         case "cancel_booking": {
@@ -190,9 +193,7 @@ export async function POST(request: Request) {
           const booking = bookingRaw as Tables<"bookings"> | null;
 
           if (!booking) {
-            return NextResponse.json({
-              results: [{ toolCallId: functionCall.id, result: "Non ho trovato prenotazioni attive per questo numero e data." }],
-            });
+            return createToolResponse("Non ho trovato prenotazioni attive per questo numero e data.", functionCall.id, 404);
           }
 
           await supabase
@@ -200,12 +201,23 @@ export async function POST(request: Request) {
             .update({ status: "cancelled" })
             .eq("id", booking.id);
 
-          return NextResponse.json({
-            results: [{
-              toolCallId: functionCall.id,
-              result: `La prenotazione di ${booking.customer_name} per il ${booking.date} alle ${booking.start_time.slice(0, 5)} è stata cancellata.`,
-            }],
-          });
+          await supabase
+            .from("call_logs")
+            .upsert(
+              {
+                business_id: businessId,
+                vapi_call_id: message.call?.id || functionCall.id,
+                caller_phone: phone || null,
+                started_at: message.call?.startedAt || new Date().toISOString(),
+                outcome: "booking_cancelled",
+              },
+              { onConflict: "vapi_call_id" }
+            );
+
+          return createToolResponse(
+            `La prenotazione di ${booking.customer_name} per il ${booking.date} alle ${booking.start_time.slice(0, 5)} è stata cancellata.`,
+            functionCall.id
+          );
         }
 
         case "lookup_booking": {
@@ -225,9 +237,7 @@ export async function POST(request: Request) {
           const bookings = (bookingsRaw ?? []) as BookingWithServiceName[];
 
           if (bookings.length === 0) {
-            return NextResponse.json({
-              results: [{ toolCallId: functionCall.id, result: "Non ho trovato prenotazioni future per questo numero di telefono." }],
-            });
+            return createToolResponse("Non ho trovato prenotazioni future per questo numero di telefono.", functionCall.id);
           }
 
           const list = bookings.map((b) => {
@@ -235,12 +245,7 @@ export async function POST(request: Request) {
             return `- ${b.date} alle ${b.start_time.slice(0, 5)}${serviceName ? ` (${serviceName})` : ""}`;
           }).join("\n");
 
-          return NextResponse.json({
-            results: [{
-              toolCallId: functionCall.id,
-              result: `Prenotazioni trovate per ${phone}:\n${list}`,
-            }],
-          });
+          return createToolResponse(`Prenotazioni trovate per ${phone}: ${list}.`, functionCall.id);
         }
 
         case "get_business_info": {
@@ -274,12 +279,10 @@ export async function POST(request: Request) {
             (s) => `${s.name} (${s.duration_minutes} min)${s.description ? `: ${s.description}` : ""}`
           ).join(", ");
 
-          return NextResponse.json({
-            results: [{
-              toolCallId: functionCall.id,
-              result: `${biz?.name || "Attività"} - ${biz?.type || ""}\nIndirizzo: ${biz?.address || "Non specificato"}\nOrari: ${schedule || "Non configurati"}\nServizi: ${serviceList || "Non configurati"}`,
-            }],
-          });
+          return createToolResponse(
+            `${biz?.name || "Attività"} - ${biz?.type || ""}. Indirizzo: ${biz?.address || "Non specificato"}. Orari: ${schedule || "Non configurati"}. Servizi: ${serviceList || "Non configurati"}.`,
+            functionCall.id
+          );
         }
       }
       break;
@@ -316,5 +319,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  return createToolResponse("OK", toolCallId);
 }

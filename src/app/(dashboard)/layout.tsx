@@ -1,5 +1,5 @@
 import { requireProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { Toaster } from "@/components/ui/sonner";
@@ -10,7 +10,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireProfile();
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data: business } = await supabase
     .from("businesses")
     .select("name, type")

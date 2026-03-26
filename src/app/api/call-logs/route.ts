@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -7,17 +8,12 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get("limit") || "20");
   const offset = (page - 1) * limit;
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("business_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getProfile();
+  if (!profile) return NextResponse.json({ error: "Non autorizzato" }, { status: 401 });
 
   if (!profile) return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
+
+  const supabase = createAdminClient();
 
   const { data, error, count } = await supabase
     .from("call_logs")

@@ -224,19 +224,28 @@ export interface Database {
           id: string;
           business_id: string;
           full_name: string;
+          username: string | null;
+          password_hash: string | null;
           role: string;
+          created_at: string | null;
         };
         Insert: {
-          id: string;
+          id?: string;
           business_id: string;
           full_name: string;
+          username?: string | null;
+          password_hash?: string | null;
           role?: string;
+          created_at?: string | null;
         };
         Update: {
           id?: string;
           business_id?: string;
           full_name?: string;
+          username?: string | null;
+          password_hash?: string | null;
           role?: string;
+          created_at?: string | null;
         };
         Relationships: [];
       };
