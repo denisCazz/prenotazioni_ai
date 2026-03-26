@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, X, Check, Loader2 } from "lucide-react";
+import { Search, Plus, X, Check, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Booking {
@@ -48,6 +49,8 @@ interface Booking {
   notes: string | null;
   created_at: string;
   services?: { name: string } | null;
+  service_address?: string | null;
+  urgency_level?: string | null;
 }
 
 const statusLabels: Record<string, string> = {
@@ -65,6 +68,7 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive" | "
 };
 
 export default function BookingsPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -296,6 +300,7 @@ export default function BookingsPage() {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Orario</TableHead>
+                    <TableHead>Indirizzo</TableHead>
                     <TableHead>Stato</TableHead>
                     <TableHead>Fonte</TableHead>
                     <TableHead className="text-right">Azioni</TableHead>
@@ -303,13 +308,24 @@ export default function BookingsPage() {
                 </TableHeader>
                 <TableBody>
                   {bookings.map((booking) => (
-                    <TableRow key={booking.id}>
+                    <TableRow
+                      key={booking.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/bookings/${booking.id}`)}
+                    >
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{booking.customer_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {booking.customer_phone}
-                          </p>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <p className="font-medium">{booking.customer_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {booking.customer_phone}
+                            </p>
+                          </div>
+                          {booking.urgency_level === "urgent" && (
+                            <span title="Urgente">
+                              <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -319,6 +335,15 @@ export default function BookingsPage() {
                       </TableCell>
                       <TableCell>
                         {booking.start_time.slice(0, 5)} - {booking.end_time.slice(0, 5)}
+                      </TableCell>
+                      <TableCell className="max-w-[160px]">
+                        {booking.service_address ? (
+                          <p className="truncate text-sm text-muted-foreground" title={booking.service_address}>
+                            {booking.service_address}
+                          </p>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={statusVariants[booking.status] || "secondary"}>
@@ -338,7 +363,7 @@ export default function BookingsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => handleStatusChange(booking.id, "completed")}
+                                onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, "completed"); }}
                                 title="Segna come completata"
                               >
                                 <Check className="h-4 w-4 text-green-600" />
@@ -347,7 +372,7 @@ export default function BookingsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => handleStatusChange(booking.id, "cancelled")}
+                                onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, "cancelled"); }}
                                 title="Cancella"
                               >
                                 <X className="h-4 w-4 text-destructive" />

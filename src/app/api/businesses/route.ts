@@ -1,6 +1,7 @@
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
+import { geocodeAddress } from "@/lib/utils/geocoding";
 import { listAssistants } from "@/lib/vapi/client";
 import { setupVapiAssistant, updateVapiAssistant } from "@/lib/vapi/setup";
 import { NextResponse } from "next/server";
@@ -84,9 +85,20 @@ export async function PATCH(request: Request) {
 
   const supabase = createAdminClient();
   const body = await request.json();
+
+  // If address changed, geocode it and update lat/lng
+  const updatePayload = { ...body };
+  if (typeof body.address === "string" && body.address.trim()) {
+    const coords = await geocodeAddress(body.address);
+    if (coords) {
+      updatePayload.latitude = coords.lat;
+      updatePayload.longitude = coords.lng;
+    }
+  }
+
   const { data, error } = await supabase
     .from("businesses")
-    .update(body)
+    .update(updatePayload)
     .eq("id", profile.business_id)
     .select()
     .single();

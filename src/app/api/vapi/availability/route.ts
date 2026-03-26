@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Tables } from "@/lib/types/database";
-import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 import {
   formatDateForVoice,
   getAvailableSlots,
@@ -8,15 +7,23 @@ import {
   isOnOrBeforeTodayInRome,
   normalizeFutureDate,
 } from "@/lib/utils/availability";
+import { geocodeAddress } from "@/lib/utils/geocoding";
+import { checkRoutingConstraint } from "@/lib/utils/routing";
+import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const { toolCallId, parameters: params, assistantId } = getToolContext(body);
-  const { date, business_id, service_name, days_ahead } = params;
+  const { date, business_id, service_name, days_ahead, service_address, urgency_level } = params;
   const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
   const requestedDate = typeof date === "string" ? normalizeFutureDate(date) : undefined;
   const requestedServiceName = typeof service_name === "string" ? service_name : undefined;
   const daysAhead = typeof days_ahead === "number" && days_ahead > 0 ? Math.min(days_ahead, 14) : 7;
+  const serviceAddress = typeof service_address === "string" ? service_address : undefined;
+  const isUrgent = urgency_level === "urgent";
+
+  // Geocode the service address once (used for routing checks below)
+  const coords = serviceAddress ? await geocodeAddress(serviceAddress) : null;
 
   const supabase = createAdminClient();
 
@@ -77,13 +84,30 @@ export async function POST(request: Request) {
       supabase.from("bookings").select("start_time, end_time, status").eq("business_id", resolvedBusinessId).eq("date", targetDate).neq("status", "cancelled"),
     ]);
 
-    return getAvailableSlots(
+    const allSlots = getAvailableSlots(
       targetDate,
       weeklySlots,
       (exceptionsRes.data ?? []) as Tables<"availability_exceptions">[],
       (bookingsRes.data ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
       service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
     );
+
+    // Apply routing filter if we have geocoordinates
+    if (!coords) return allSlots;
+
+    const filtered: typeof allSlots = [];
+    for (const slot of allSlots) {
+      const routing = await checkRoutingConstraint(
+        resolvedBusinessId,
+        targetDate,
+        slot.start_time,
+        coords.lat,
+        coords.lng,
+        isUrgent
+      );
+      if (routing.allowed) filtered.push(slot);
+    }
+    return filtered;
   }
 
   if (requestedDate) {

@@ -25,6 +25,14 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
               type: "string",
               description: "Il nome del servizio richiesto (opzionale)",
             },
+            service_address: {
+              type: "string",
+              description: "Indirizzo completo dove avverrà l'intervento. Usato per verificare che lo slot sia raggiungibile entro 20 km dagli altri appuntamenti della giornata.",
+            },
+            urgency_level: {
+              type: "string",
+              description: "Livello di urgenza: 'urgent' per guasti urgenti, 'planned' per interventi programmati.",
+            },
           },
         },
       },

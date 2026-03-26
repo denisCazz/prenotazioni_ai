@@ -11,6 +11,8 @@ export interface Database {
           phone_number: string | null;
           vapi_assistant_id: string | null;
           address: string | null;
+          latitude: number | null;
+          longitude: number | null;
           settings: Json | null;
           system_prompt: string | null;
           created_at: string;
@@ -22,6 +24,8 @@ export interface Database {
           phone_number?: string | null;
           vapi_assistant_id?: string | null;
           address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
           settings?: Json | null;
           system_prompt?: string | null;
           created_at?: string;
@@ -33,6 +37,8 @@ export interface Database {
           phone_number?: string | null;
           vapi_assistant_id?: string | null;
           address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
           settings?: Json | null;
           system_prompt?: string | null;
           created_at?: string;
@@ -141,6 +147,14 @@ export interface Database {
           source: string;
           call_id: string | null;
           created_at: string;
+          service_address: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          urgency_level: string | null;
+          stove_brand: string | null;
+          stove_model: string | null;
+          issue_description: string | null;
+          customer_status: string | null;
         };
         Insert: {
           id?: string;
@@ -156,6 +170,14 @@ export interface Database {
           source?: string;
           call_id?: string | null;
           created_at?: string;
+          service_address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          urgency_level?: string | null;
+          stove_brand?: string | null;
+          stove_model?: string | null;
+          issue_description?: string | null;
+          customer_status?: string | null;
         };
         Update: {
           id?: string;
@@ -171,6 +193,14 @@ export interface Database {
           source?: string;
           call_id?: string | null;
           created_at?: string;
+          service_address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          urgency_level?: string | null;
+          stove_brand?: string | null;
+          stove_model?: string | null;
+          issue_description?: string | null;
+          customer_status?: string | null;
         };
         Relationships: [];
       };
