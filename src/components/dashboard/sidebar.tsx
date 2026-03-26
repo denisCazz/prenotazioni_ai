@@ -48,18 +48,18 @@ export function Sidebar({ businessName, businessType }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "relative flex flex-col border-r bg-card transition-all duration-300",
+        "relative flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="flex h-16 items-center gap-3 border-b px-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-sm font-bold shadow-md">
           {businessName.charAt(0).toUpperCase()}
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{businessName}</p>
-            <p className="truncate text-xs text-muted-foreground capitalize">
+            <p className="truncate text-sm font-semibold text-sidebar-foreground">{businessName}</p>
+            <p className="truncate text-xs text-sidebar-foreground/50 capitalize">
               {businessType}
             </p>
           </div>
@@ -80,22 +80,22 @@ export function Sidebar({ businessName, businessType }: SidebarProps) {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                   isActive
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 )}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
+                <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-sidebar-primary")} />
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <Separator className="my-4 mx-2" />
+        <Separator className="my-4 mx-2 bg-sidebar-border" />
 
         <div className="px-2">
           {!collapsed && (
-            <p className="mb-2 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="mb-2 px-3 text-xs font-medium text-sidebar-foreground/40 uppercase tracking-wider">
               Impostazioni
             </p>
           )}
@@ -109,11 +109,11 @@ export function Sidebar({ businessName, businessType }: SidebarProps) {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                     isActive
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                   )}
                 >
-                  <item.icon className="h-4 w-4 shrink-0" />
+                  <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-sidebar-primary")} />
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
@@ -125,7 +125,7 @@ export function Sidebar({ businessName, businessType }: SidebarProps) {
       <Button
         variant="ghost"
         size="icon"
-        className="absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border bg-card shadow-sm"
+        className="absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border border-border bg-background shadow-md hover:bg-muted"
         onClick={() => setCollapsed(!collapsed)}
       >
         {collapsed ? (

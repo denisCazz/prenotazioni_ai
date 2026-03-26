@@ -60,11 +60,11 @@ const statusLabels: Record<string, string> = {
   no_show: "Non presentato",
 };
 
-const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  confirmed: "default",
-  cancelled: "destructive",
-  completed: "secondary",
-  no_show: "outline",
+const statusClasses: Record<string, string> = {
+  confirmed: "bg-blue-100 text-blue-700 border-blue-200",
+  completed: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  cancelled: "bg-red-100 text-red-600 border-red-200",
+  no_show: "bg-amber-100 text-amber-700 border-amber-200",
 };
 
 export default function BookingsPage() {
@@ -248,9 +248,9 @@ export default function BookingsPage() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-4">
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4 border-b">
+          <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -310,7 +310,7 @@ export default function BookingsPage() {
                   {bookings.map((booking) => (
                     <TableRow
                       key={booking.id}
-                      className="cursor-pointer"
+                      className="cursor-pointer hover:bg-accent/40 transition-colors"
                       onClick={() => router.push(`/bookings/${booking.id}`)}
                     >
                       <TableCell>
@@ -346,9 +346,9 @@ export default function BookingsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusVariants[booking.status] || "secondary"}>
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusClasses[booking.status] ?? "bg-gray-100 text-gray-600"}`}>
                           {statusLabels[booking.status] || booking.status}
-                        </Badge>
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge variant={booking.source === "phone_ai" ? "default" : "outline"}>

@@ -60,7 +60,8 @@ export function getAvailableSlots(
     return [];
   }
 
-  const duration = service?.duration_minutes ?? slotIntervalMinutes;
+  // Each slot blocks 60 min: ~30 min service + 30 min travel buffer
+  const duration = service?.duration_minutes ?? 60;
   const maxConcurrent = service?.max_concurrent ?? 1;
   const activeBookings = existingBookings.filter((b) => b.status !== "cancelled");
 

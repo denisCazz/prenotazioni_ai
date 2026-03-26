@@ -9,6 +9,7 @@ import { it } from "date-fns/locale";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, MapPin, Wrench, AlertTriangle } from "lucide-react";
+import { CancelBookingButton } from "./cancel-button";
 
 type BookingDetail = Tables<"bookings"> & {
   services: { name: string } | null;
@@ -48,7 +49,7 @@ export default async function BookingDetailPage({
     booking.latitude && booking.longitude
       ? `https://maps.google.com/maps?q=${booking.latitude},${booking.longitude}&output=embed&z=16`
       : booking.service_address
-      ? `https://maps.google.com/maps?q=${encodeURIComponent(booking.service_address)}&output=embed&z=16`
+      ? `https://maps.google.com/maps?q=${encodeURIComponent(booking.service_address + ", Italia")}&output=embed&z=16`
       : null;
 
   return (
@@ -60,7 +61,8 @@ export default async function BookingDetailPage({
           </Button>
         </Link>
         <div className="flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">Dettaglio prenotazione</h1>
             {urgencyLabel && (
               <Badge variant={booking.urgency_level === "urgent" ? "destructive" : "secondary"}>
@@ -68,6 +70,8 @@ export default async function BookingDetailPage({
                 {urgencyLabel}
               </Badge>
             )}
+            </div>
+            <CancelBookingButton bookingId={booking.id} status={booking.status} />
           </div>
           <p className="text-muted-foreground">ID: {booking.id}</p>
         </div>

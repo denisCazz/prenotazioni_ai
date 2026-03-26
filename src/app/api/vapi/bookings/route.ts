@@ -4,6 +4,7 @@ import { isOnOrBeforeTodayInRome, normalizeFutureDate } from "@/lib/utils/availa
 import { geocodeAddress } from "@/lib/utils/geocoding";
 import { checkRoutingConstraint } from "@/lib/utils/routing";
 import { createToolResponse, getToolContext } from "@/lib/vapi/responses";
+import { sendTelegramMessage } from "@/lib/utils/telegram";
 import { NextResponse } from "next/server";
 
 /** Regex for Italian phone numbers (mobile + landline, optional +39 prefix) */
@@ -107,6 +108,12 @@ export async function POST(request: Request) {
       return createToolResponse("Errore: impossibile cancellare la prenotazione in questo momento.", toolCallId, 500);
     }
 
+    void sendTelegramMessage(
+      `❌ <b>Appuntamento cancellato</b>\n` +
+      `👤 ${booking.customer_name}\n` +
+      `📅 ${booking.date} alle ${booking.start_time.slice(0, 5)}`
+    );
+
     return createToolResponse(
       `Prenotazione cancellata per ${booking.customer_name} il ${booking.date} alle ${booking.start_time.slice(0, 5)}.`,
       toolCallId
@@ -188,7 +195,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const duration = 30;
+  const duration = 60; // 30 min service + 30 min travel buffer
   const [h, m] = resolvedStartTime.split(":").map(Number);
   const computedEnd = new Date(2000, 0, 1, h, m + duration);
   const computedEndTime = `${String(computedEnd.getHours()).padStart(2, "0")}:${String(computedEnd.getMinutes()).padStart(2, "0")}:00`;
@@ -230,6 +237,15 @@ export async function POST(request: Request) {
   if (!booking) {
     return createToolResponse("Errore: prenotazione non restituita dal database.", toolCallId, 500);
   }
+
+  void sendTelegramMessage(
+    `📅 <b>Nuova prenotazione</b>\n` +
+    `👤 ${booking.customer_name}\n` +
+    `📞 ${booking.customer_phone}\n` +
+    `🗓 ${booking.date} alle ${booking.start_time.slice(0, 5)}` +
+    (serviceAddress ? `\n📍 ${serviceAddress}` : "") +
+    (issueDescription ? `\n🔧 ${issueDescription}` : "")
+  );
 
   const addressNote = serviceAddress ? ` presso ${serviceAddress}` : "";
   return createToolResponse(
