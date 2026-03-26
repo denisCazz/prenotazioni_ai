@@ -56,16 +56,29 @@ export async function POST(request: Request) {
     );
   }
 
+  const { data: weeklySlotsData } = await supabase
+    .from("availability_slots")
+    .select("*")
+    .eq("business_id", resolvedBusinessId);
+
+  const weeklySlots = (weeklySlotsData ?? []) as Tables<"availability_slots">[];
+
+  if (weeklySlots.length === 0) {
+    return createToolResponse(
+      "Le disponibilita dell'attivita non sono ancora configurate nel calendario. Occorre prima impostare le fasce orarie di apertura.",
+      toolCallId
+    );
+  }
+
   async function loadAvailability(targetDate: string) {
-    const [slotsRes, exceptionsRes, bookingsRes] = await Promise.all([
-      supabase.from("availability_slots").select("*").eq("business_id", resolvedBusinessId),
+    const [exceptionsRes, bookingsRes] = await Promise.all([
       supabase.from("availability_exceptions").select("*").eq("business_id", resolvedBusinessId).eq("date", targetDate),
       supabase.from("bookings").select("start_time, end_time, status").eq("business_id", resolvedBusinessId).eq("date", targetDate).neq("status", "cancelled"),
     ]);
 
     return getAvailableSlots(
       targetDate,
-      (slotsRes.data ?? []) as Tables<"availability_slots">[],
+      weeklySlots,
       (exceptionsRes.data ?? []) as Tables<"availability_exceptions">[],
       (bookingsRes.data ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
       service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined

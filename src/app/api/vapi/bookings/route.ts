@@ -9,7 +9,7 @@ type BookingCancellationResult = Pick<Tables<"bookings">, "id" | "customer_name"
 export async function POST(request: Request) {
   const body = await request.json();
   const supabase = createAdminClient();
-  const { toolCallId, toolName, parameters: params, assistantId } = getToolContext(body);
+  const { toolCallId, toolName, parameters: params, assistantId, callerPhone, callerName } = getToolContext(body);
   const {
     business_id,
     customer_name,
@@ -23,8 +23,8 @@ export async function POST(request: Request) {
     call_id,
   } = params;
   const businessIdFromParams = typeof business_id === "string" ? business_id : undefined;
-  const customerName = typeof customer_name === "string" ? customer_name : undefined;
-  const customerPhone = typeof customer_phone === "string" ? customer_phone : undefined;
+  const customerName = typeof customer_name === "string" ? customer_name : callerName;
+  const customerPhone = typeof customer_phone === "string" ? customer_phone : callerPhone;
   const bookingDate = typeof date === "string" ? date : undefined;
   const startTime = typeof start_time === "string" ? start_time : undefined;
   const endTime = typeof end_time === "string" ? end_time : undefined;
@@ -86,11 +86,27 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!customerName || !customerPhone || !bookingDate || !startTime) {
-    return createToolResponse("Errore: campi obbligatori mancanti per creare la prenotazione.", toolCallId, 400);
+  const missingFields: string[] = [];
+
+  if (!customerName) missingFields.push("nome e cognome");
+  if (!customerPhone) missingFields.push("numero di telefono");
+  if (!bookingDate) missingFields.push("data");
+  if (!startTime) missingFields.push("orario");
+
+  if (missingFields.length > 0) {
+    return createToolResponse(
+      `Per confermare la prenotazione mi servono ancora questi dati: ${missingFields.join(", ")}.`,
+      toolCallId,
+      400
+    );
   }
 
-  if (isOnOrBeforeTodayInRome(bookingDate)) {
+  const resolvedCustomerName = customerName as string;
+  const resolvedCustomerPhone = customerPhone as string;
+  const resolvedBookingDate = bookingDate as string;
+  const resolvedStartTime = startTime as string;
+
+  if (isOnOrBeforeTodayInRome(resolvedBookingDate)) {
     return createToolResponse("Posso fissare solo appuntamenti in date successive a oggi.", toolCallId, 400);
   }
 
@@ -108,21 +124,23 @@ export async function POST(request: Request) {
     return createToolResponse("Errore: business non trovato.", toolCallId, 404);
   }
 
+  const resolvedBusinessId = businessId as string;
+
   const duration = 30;
-  const [h, m] = startTime.split(":").map(Number);
+  const [h, m] = resolvedStartTime.split(":").map(Number);
   const computedEnd = new Date(2000, 0, 1, h, m + duration);
   const computedEndTime = `${String(computedEnd.getHours()).padStart(2, "0")}:${String(computedEnd.getMinutes()).padStart(2, "0")}:00`;
-  const startTimeDb = startTime.length === 5 ? `${startTime}:00` : startTime;
+  const startTimeDb = resolvedStartTime.length === 5 ? `${resolvedStartTime}:00` : resolvedStartTime;
   const endTimeDb = endTime ? (endTime.length === 5 ? `${endTime}:00` : endTime) : computedEndTime;
 
   const { data: bookingData, error } = await supabase
     .from("bookings")
     .insert({
-      business_id: businessId,
+      business_id: resolvedBusinessId,
       service_id: serviceId || null,
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      date: bookingDate,
+      customer_name: resolvedCustomerName,
+      customer_phone: resolvedCustomerPhone,
+      date: resolvedBookingDate,
       start_time: startTimeDb,
       end_time: endTimeDb,
       status: "confirmed",

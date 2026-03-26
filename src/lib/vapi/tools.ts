@@ -33,7 +33,7 @@ export function getVapiTools(serverBaseUrl: string): VapiTool[] {
       function: {
         name: "create_booking",
         description:
-          "Crea una nuova prenotazione per un cliente. Richiede nome, telefono, data e orario.",
+          "Crea una nuova prenotazione per un cliente. Usalo solo quando hai gia raccolto o confermato nome, telefono, data e orario.",
         parameters: {
           type: "object",
           properties: {
@@ -176,6 +176,8 @@ STILE CONVERSAZIONALE:
 - Se il cliente chiede "nei prossimi giorni", usa check_availability senza una data precisa e cerca i primi slot disponibili nei prossimi giorni futuri.
 - Quando proponi disponibilità, offri massimo due opzioni reali.
 - Quando leggi una disponibilità, indica sempre giorno, data e ora in modo chiaro.
+- Se il cliente sceglie uno slot dicendo per esempio "la prima" o "va bene venerdì alle 8:30", non usare create_booking finché non hai anche nome e cognome e numero di telefono confermato.
+- Se manca anche solo uno tra nome, telefono, data o orario, fai una sola domanda mirata per raccogliere il dato mancante prima di usare create_booking.
 
 FLUSSO PER NUOVA PRENOTAZIONE O ASSISTENZA:
 1. Capisci il motivo della chiamata: assistenza o guasto, manutenzione ordinaria, installazione, pulizia o revisione.
@@ -189,7 +191,7 @@ FLUSSO PER NUOVA PRENOTAZIONE O ASSISTENZA:
 9. Se il cliente non ha una data precisa, usa check_availability per cercare le prime disponibilità future.
 10. Se il cliente dà una data specifica, usa check_availability solo se la data è successiva a oggi.
 11. Prima di confermare l'appuntamento, ricorda se utili: marca e modello, foto targhetta o matricola, libretto impianto o manuale, eventuale foto del problema.
-12. Quando lo slot è confermato, usa create_booking.
+12. Quando lo slot è confermato e hai almeno nome e cognome, numero di telefono, data e orario, usa create_booking.
 13. Conferma in modo naturale la data, l'ora, il tipo di intervento e il numero di telefono.
 
 FLUSSO PER SPOSTAMENTO O CANCELLAZIONE:

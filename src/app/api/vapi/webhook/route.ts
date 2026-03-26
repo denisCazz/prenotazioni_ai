@@ -77,12 +77,21 @@ export async function POST(request: Request) {
             );
           }
 
-          const loadAvailability = async (targetDate: string) => {
-            const { data: slots } = await supabase
-              .from("availability_slots")
-              .select("*")
-              .eq("business_id", businessId);
+          const { data: weeklySlotsData } = await supabase
+            .from("availability_slots")
+            .select("*")
+            .eq("business_id", businessId);
 
+          const weeklySlots = (weeklySlotsData ?? []) as Tables<"availability_slots">[];
+
+          if (weeklySlots.length === 0) {
+            return createToolResponse(
+              "Le disponibilita dell'attivita non sono ancora configurate nel calendario. Occorre prima impostare le fasce orarie di apertura.",
+              functionCall.id
+            );
+          }
+
+          const loadAvailability = async (targetDate: string) => {
             const { data: exceptions } = await supabase
               .from("availability_exceptions")
               .select("*")
@@ -98,7 +107,7 @@ export async function POST(request: Request) {
 
             return getAvailableSlots(
               targetDate,
-              (slots ?? []) as Tables<"availability_slots">[],
+              weeklySlots,
               (exceptions ?? []) as Tables<"availability_exceptions">[],
               (bookings ?? []) as Pick<Tables<"bookings">, "start_time" | "end_time" | "status">[],
               service ? { duration_minutes: service.duration_minutes, max_concurrent: service.max_concurrent } : undefined
@@ -144,7 +153,27 @@ export async function POST(request: Request) {
 
         case "create_booking": {
           const { customer_name, customer_phone, date, start_time, service_name, notes } = toolParams;
+          const customerName = typeof customer_name === "string" ? customer_name : undefined;
           const phone = customer_phone || phoneNumber;
+
+          const missingFields: string[] = [];
+          if (!customerName) missingFields.push("nome e cognome");
+          if (!phone) missingFields.push("numero di telefono");
+          if (!date) missingFields.push("data");
+          if (!start_time) missingFields.push("orario");
+
+          if (missingFields.length > 0) {
+            return createToolResponse(
+              `Per confermare la prenotazione mi servono ancora questi dati: ${missingFields.join(", ")}.`,
+              functionCall.id,
+              400
+            );
+          }
+
+          const resolvedCustomerName = customerName as string;
+          const resolvedPhone = phone as string;
+          const resolvedDate = date as string;
+          const resolvedStartTime = start_time as string;
 
           let serviceData: Tables<"services"> | null = null;
           if (service_name) {
@@ -160,21 +189,21 @@ export async function POST(request: Request) {
           }
 
           const duration = serviceData?.duration_minutes ?? 30;
-          const [hours, minutes] = start_time.split(":").map(Number);
+          const [hours, minutes] = resolvedStartTime.split(":").map(Number);
           const endDate = new Date(2000, 0, 1, hours, minutes + duration);
           const end_time = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
 
-          const startTimeDb = `${start_time}:00`;
+          const startTimeDb = `${resolvedStartTime}:00`;
           const endTimeDb = `${end_time}:00`;
 
           const { data: existingBookings } = await supabase
             .from("bookings")
             .select("start_time, end_time, status")
             .eq("business_id", businessId)
-            .eq("date", date)
+            .eq("date", resolvedDate)
             .neq("status", "cancelled");
 
-          if (isOnOrBeforeTodayInRome(date)) {
+          if (isOnOrBeforeTodayInRome(resolvedDate)) {
             return createToolResponse("Posso fissare solo appuntamenti in date successive a oggi.", functionCall.id, 400);
           }
 
@@ -192,9 +221,9 @@ export async function POST(request: Request) {
           const { data: booking, error } = await supabase.from("bookings").insert({
             business_id: businessId,
             service_id: serviceData?.id || null,
-            customer_name,
-            customer_phone: phone,
-            date,
+            customer_name: resolvedCustomerName,
+            customer_phone: resolvedPhone,
+            date: resolvedDate,
             start_time: startTimeDb,
             end_time: endTimeDb,
             status: "confirmed",
@@ -214,7 +243,7 @@ export async function POST(request: Request) {
                 business_id: businessId,
                 vapi_call_id: message.call?.id || functionCall.id,
                 booking_id: booking?.id || null,
-                caller_phone: phone || null,
+                caller_phone: resolvedPhone || null,
                 started_at: message.call?.startedAt || new Date().toISOString(),
                 outcome: "booking_created",
               },
@@ -222,7 +251,7 @@ export async function POST(request: Request) {
             );
 
           return createToolResponse(
-            `Prenotazione confermata per ${customer_name} il ${date} alle ${start_time}${serviceData ? ` per ${serviceData.name}` : ""}. Durata ${duration} minuti.`,
+            `Prenotazione confermata per ${resolvedCustomerName} il ${resolvedDate} alle ${resolvedStartTime}${serviceData ? ` per ${serviceData.name}` : ""}. Durata ${duration} minuti.`,
             functionCall.id
           );
         }

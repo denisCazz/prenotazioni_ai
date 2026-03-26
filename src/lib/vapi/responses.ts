@@ -31,6 +31,10 @@ type VapiBody = {
       assistant?: {
         id?: string;
       };
+      customer?: {
+        number?: string;
+        name?: string;
+      };
     };
     assistant?: {
       id?: string;
@@ -61,6 +65,8 @@ export function getToolContext(body: unknown) {
       message?.call?.assistant?.id ||
       message?.assistant?.id,
     callId: message?.call?.id,
+    callerPhone: message?.call?.customer?.number,
+    callerName: message?.call?.customer?.name,
   };
 }
 
